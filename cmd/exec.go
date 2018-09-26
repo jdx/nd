@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/Masterminds/semver"
@@ -89,7 +90,7 @@ func install(dir, name, requiredVersion string) {
 	manifest := fetchManifest(name)
 	version := manifest.Versions[getMaxVersion(name, requiredVersion, manifest)]
 	url := version.Dist.Tarball
-	q.Q(url)
+	q.Q(url, dir)
 	rsp, err := http.Get(url)
 	must(err)
 	if rsp.StatusCode != 200 {
@@ -104,7 +105,13 @@ func install(dir, name, requiredVersion string) {
 			break
 		}
 		must(err)
-		q.Q(hdr)
+		p := strings.TrimPrefix(hdr.Name, "package/")
+		p = path.Join(dir, p)
+		must(os.MkdirAll(path.Dir(p), 0755))
+		f, err := os.Create(p)
+		must(err)
+		_, err = io.Copy(f, tr)
+		must(err)
 	}
 }
 
@@ -112,7 +119,7 @@ func refresh(root string) {
 	wg := sync.WaitGroup{}
 	ensure := func(name, requiredVersion string) {
 		defer wg.Done()
-		dir := path.Join("node_modules", name)
+		dir := path.Join(root, "node_modules", name)
 		pkg := getPackage(dir)
 		if pkg != nil {
 			return
