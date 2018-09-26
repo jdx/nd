@@ -1,7 +1,7 @@
 package main
 
-import "fmt"
+import "github.com/jdxcode/nd/cmd"
 
 func main() {
-	fmt.Println("FOO")
+	cmd.Execute()
 }
