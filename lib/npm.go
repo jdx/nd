@@ -1,11 +1,16 @@
 package lib
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/Masterminds/semver"
@@ -77,7 +82,7 @@ func fetch(key string, fn func() interface{}) interface{} {
 	wg := wgOrManifest.(*sync.WaitGroup)
 	wg.Add(1)
 	defer wg.Done()
-	log.Debugf("cache: computing %s", key)
+	log.Infof("cache: computing %s", key)
 	result := fn()
 	// log.Debugf("cache: computed %s", key)
 	cache.Store(key, result)
@@ -99,24 +104,81 @@ func FetchManifest(name string) *Manifest {
 	}).(*Manifest)
 }
 
-func ParsePackage(root string) *Package {
-	return fetch("ParsePackage:"+root, func() interface{} {
-		p := path.Join(root, "package.json")
-		log.Debugf("ParsePackage %s", p)
-		var pkg Package
-		file, err := os.Open(p)
-		if err != nil && os.IsNotExist(err) {
-			return nil
-		}
-		must(err)
-		decoder := json.NewDecoder(file)
-		must(decoder.Decode(&pkg))
-		return &pkg
-	}).(*Package)
+func ParsePackage(root string) (*Package, error) {
+	// return fetch("ParsePackage:"+root, func() interface{} {
+	p := path.Join(root, "package.json")
+	log.Debugf("ParsePackage %s", p)
+	var pkg Package
+	file, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&pkg)
+	if err != nil {
+		return nil, err
+	}
+	return &pkg, nil
+	// }).(*Package)
 }
 
 func must(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func install(dir, name, requiredVersion string) {
+	manifest := FetchManifest(name)
+	version := manifest.Versions[getMaxVersion(name, requiredVersion, manifest)]
+	url := version.Dist.Tarball
+	log.Infof("%s -> %s", url, dir)
+	rsp, err := http.Get(url)
+	must(err)
+	if rsp.StatusCode != 200 {
+		panic("invalid status code " + url + " " + rsp.Status)
+	}
+	deflate, err := gzip.NewReader(rsp.Body)
+	must(err)
+	tr := tar.NewReader(deflate)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		must(err)
+		p := strings.TrimPrefix(hdr.Name, "package/")
+		p = path.Join(dir, p)
+		must(os.MkdirAll(path.Dir(p), 0755))
+		f, err := os.Create(p)
+		must(err)
+		_, err = io.Copy(f, tr)
+		must(err)
+	}
+}
+
+func Refresh(root string) {
+	var refresh func(root string, wg *sync.WaitGroup)
+	refresh = func(root string, wg *sync.WaitGroup) {
+		log.Debugf("refresh %s", root)
+		ensure := func(name, requiredVersion string) {
+			fmt.Println(root)
+			defer wg.Done()
+			dir := path.Join(root, "node_modules", name)
+			_, err := ParsePackage(dir)
+			if os.IsNotExist(err) {
+				install(dir, name, requiredVersion)
+			}
+			refresh(dir, wg)
+		}
+		pkg, err := ParsePackage(root)
+		must(err)
+		for name, version := range pkg.Dependencies {
+			wg.Add(1)
+			go ensure(name, version)
+		}
+	}
+	wg := sync.WaitGroup{}
+	refresh(root, &wg)
+	wg.Wait()
 }
