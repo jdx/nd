@@ -72,7 +72,7 @@ type PJSON struct {
 
 type PackageLock struct {
 	Version      string                  `json:"version"`
-	Resolved     string                  `json:"resolved"`
+	Resolved     interface{}             `json:"resolved"`
 	Integrity    string                  `json:"integrity"`
 	Requires     interface{}             `json:"requires"`
 	Dependencies map[string]*PackageLock `json:"dependencies"`
@@ -377,10 +377,13 @@ func (this *Package) findLockTarball(name, version string) *ManifestDist {
 	if dep == nil {
 		return nil
 	}
-	return &ManifestDist{
-		Integrity: dep.Integrity,
-		Tarball:   dep.Resolved,
+	if resolved, ok := dep.Resolved.(string); ok {
+		return &ManifestDist{
+			Integrity: dep.Integrity,
+			Tarball:   resolved,
+		}
 	}
+	return nil
 }
 
 func extractTarFromUrl(url, to string) {
