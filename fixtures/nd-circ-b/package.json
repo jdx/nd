@@ -1,0 +1,7 @@
+{
+  "name": "nd-circ-b",
+  "version": "1.0.0",
+  "dependencies": {
+    "nd-circ-a": "1.0.0"
+  }
+}
