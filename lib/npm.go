@@ -10,12 +10,15 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/apex/log"
+	"github.com/jdxcode/clonedir"
 	"github.com/jdxcode/semver"
+	homedir "github.com/mitchellh/go-homedir"
 )
 
 func Load(root string) *Package {
@@ -36,7 +39,18 @@ func envOrDefault(k, def string) string {
 	return v
 }
 
+var homeDir string
+var tmpDir string
+
 func init() {
+	var err error
+	homeDir, err = homedir.Dir()
+	must(err)
+	if runtime.GOOS == "darwin" {
+		tmpDir = path.Join(homeDir, "Library", "Caches", "nd")
+	} else {
+		tmpDir = path.Join(homeDir, ".cache", "nd")
+	}
 	log.SetLevelFromString(envOrDefault("ND_LOG", "warn"))
 }
 
@@ -209,11 +223,33 @@ func FetchManifest(name string) *Manifest {
 	}).(*Manifest)
 }
 
+func fileExists(p string) bool {
+	if _, err := os.Stat(p); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+		panic(err)
+	}
+	return true
+}
+
 func (this *Package) install() {
 	log.Debugf("installing %s@%s to %s", this.Name, this.Version, this.Root)
 	manifest := FetchManifest(this.Name)
-	dist := manifest.Versions[this.Version.String()].Dist
-	url := dist.Tarball
+	version := this.Version.String()
+	cacheLocation := path.Join(tmpDir, this.Name, version)
+
+	if !fileExists(cacheLocation) {
+		dist := manifest.Versions[version].Dist
+		url := dist.Tarball
+		extractTarFromUrl(url, cacheLocation)
+		setIntegrity(cacheLocation, dist.Integrity)
+	}
+
+	clonedir.Clone(cacheLocation, this.Root)
+}
+
+func extractTarFromUrl(url, to string) {
 	log.Infof("HTTP GET %s", url)
 	rsp, err := http.Get(url)
 	must(err)
@@ -239,7 +275,7 @@ func (this *Package) install() {
 
 		fi := hdr.FileInfo()
 		mode := fi.Mode()
-		p = path.Join(this.Root, p)
+		p = path.Join(to, p)
 		must(os.MkdirAll(path.Dir(p), 0755))
 		if mode.IsDir() {
 			log.Debugf("creating directory %s", p)
@@ -251,7 +287,6 @@ func (this *Package) install() {
 			must(err)
 		}
 	}
-	setIntegrity(this.Root, dist.Integrity)
 }
 
 func setIntegrity(root, integrity string) {

@@ -2,14 +2,6 @@
 
 
 [[projects]]
-  digest = "1:55388fd080150b9a072912f97b1f5891eb0b50df43401f8b75fb4273d3fec9fc"
-  name = "github.com/Masterminds/semver"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "c7af12943936e8c39859482e61f0574c2fd7fc75"
-  version = "v1.4.2"
-
-[[projects]]
   digest = "1:40261f597e43f31aaf9f8658b85c082773217943056f1be137635e769c0798c9"
   name = "github.com/apex/log"
   packages = ["."]
@@ -34,6 +26,14 @@
   version = "v1.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:9e29e5ed4629c7d837214308c107880e130310f88c058198cb13f64d0ba52a47"
+  name = "github.com/jdxcode/clonedir"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "609848f5019ef87508f6e1241a31bd141fb42542"
+
+[[projects]]
   digest = "1:55388fd080150b9a072912f97b1f5891eb0b50df43401f8b75fb4273d3fec9fc"
   name = "github.com/jdxcode/semver"
   packages = ["."]
@@ -42,20 +42,12 @@
   version = "v1.4.2"
 
 [[projects]]
-  digest = "1:ca955a9cd5b50b0f43d2cc3aeb35c951473eeca41b34eb67507f1dbcc0542394"
-  name = "github.com/kr/pretty"
+  digest = "1:78bbb1ba5b7c3f2ed0ea1eab57bdd3859aec7e177811563edc41198a760b06af"
+  name = "github.com/mitchellh/go-homedir"
   packages = ["."]
   pruneopts = "UT"
-  revision = "73f6ac0b30a98e433b289500d779f50c1a6f0712"
-  version = "v0.1.0"
-
-[[projects]]
-  digest = "1:15b5cc79aad436d47019f814fde81a10221c740dc8ddf769221a65097fb6c2e9"
-  name = "github.com/kr/text"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "e2ffdb16a802fe2bb95e2e35ff34f0e53aeef34f"
-  version = "v0.1.0"
+  revision = "ae18d6b8b3205b561c79e8e5f69bff09736185f4"
+  version = "v1.0.0"
 
 [[projects]]
   digest = "1:40e195917a951a8bf867cd05de2a46aaf1806c50cf92eebf4c16f78cd196f747"
@@ -97,24 +89,16 @@
   revision = "f35b8ab0b5a2cef36673838d662e249dd9c94686"
   version = "v1.2.2"
 
-[[projects]]
-  digest = "1:af5b0eae47d6e40d8a7597c30397f4edbe747a985ceb35651303816435a889bf"
-  name = "github.com/y0ssar1an/q"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "4b5d05b1e093249d7f51e3a72677a7003a534b40"
-  version = "1.0.4"
-
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
-    "github.com/Masterminds/semver",
     "github.com/apex/log",
+    "github.com/jdxcode/clonedir",
     "github.com/jdxcode/semver",
+    "github.com/mitchellh/go-homedir",
     "github.com/spf13/cobra",
     "github.com/stretchr/testify/assert",
-    "github.com/y0ssar1an/q",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
