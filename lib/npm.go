@@ -172,7 +172,7 @@ func (this *Package) refresh(dev bool) {
 		this.Dependencies = &sync.Map{}
 		if this.PJSON == nil {
 			pjson, err := ParsePackage(this.Root)
-			if os.IsNotExist(err) {
+			if os.IsNotExist(err) || pjson.Version != this.Version.String() {
 				this.install()
 				pjson, err = ParsePackage(this.Root)
 			}
@@ -432,6 +432,9 @@ func (this *Package) isRequiredBy(other *Package) bool {
 }
 
 func (this *Package) getIdealVersion(name, r string) *semver.Version {
+	if current := this.getCurrentVersion(name, r); current != nil {
+		return current
+	}
 	if this.PackageLock != nil {
 		lock := this.PackageLock.Dependencies[name]
 		if lock != nil {
@@ -442,4 +445,22 @@ func (this *Package) getIdealVersion(name, r string) *semver.Version {
 	}
 	return getMinVersion(name, r)
 
+}
+
+func (this *Package) getCurrentVersion(name, r string) *semver.Version {
+	pjson, err := ParsePackage(path.Join(this.Root, "node_modules", name))
+	if os.IsNotExist(err) {
+		if this.Parent != nil {
+			return this.Parent.getCurrentVersion(name, r)
+		}
+		return nil
+	}
+	must(err)
+	version, err := semver.NewVersion(pjson.Version)
+	must(err)
+	rng := parseConstraint(r)
+	if rng.Check(version) {
+		return version
+	}
+	return nil
 }

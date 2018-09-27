@@ -2,7 +2,7 @@
   "name": "example",
   "version": "0.0.0",
   "dependencies": {
-    "edon-test-a": "0.0.1",
+    "edon-test-a": "1.0.1",
     "edon-test-c": "^1.0.3"
   },
   "devDependencies": {

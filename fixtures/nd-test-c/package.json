@@ -1,0 +1,8 @@
+{
+  "name": "nd-test-c",
+  "version": "1.0.1",
+  "dependencies": {
+    "nd-a": "1.0.0",
+    "nd-test-b": "^1.0.0"
+  }
+}
