@@ -27,7 +27,11 @@ func Load(root string) *Package {
 	must(err)
 	pjson, err := ParsePackage(root)
 	must(err)
-	pkg := Package{Root: root, PJSON: pjson}
+	version, err := semver.NewVersion(pjson.Version)
+	if pjson.Version != "" {
+		must(err)
+	}
+	pkg := Package{Name: pjson.Name, Root: root, PJSON: pjson, Version: version}
 	lock, err := ParsePackageLock(root)
 	if lock != nil {
 		pkg.PackageLock = lock
@@ -181,12 +185,6 @@ func (this *Package) refresh(dev bool) {
 			must(err)
 			this.PJSON = pjson
 		}
-		version, err := semver.NewVersion(this.PJSON.Version)
-		if this.PJSON.Version != "" {
-			must(err)
-		}
-		this.Version = version
-		this.Name = this.PJSON.Name
 		deps := []*Package{}
 		addDep := func(name, requestedVersion string) {
 			dep := this.addDep(name, requestedVersion)
@@ -247,7 +245,7 @@ func (this *Package) addDep(name, r string) *Package {
 		return pkg
 	}
 	if !loaded {
-		panic("already loaded incompatible version: " + name)
+		panic(fmt.Sprintf("already loaded incompatible version: %s@%s expected: %s", name, pkg.Version.String(), r))
 	}
 	return nil
 }
