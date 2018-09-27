@@ -17,7 +17,9 @@ import (
 )
 
 func Load(root string) *Package {
-	pkg := Package{Root: root}
+	pjson, err := ParsePackage(root)
+	must(err)
+	pkg := Package{Root: root, PJSON: pjson}
 	pkg.Refresh()
 	return &pkg
 }
@@ -108,13 +110,15 @@ type Package struct {
 func (this *Package) Refresh() {
 	fetch("package.Refresh:"+this.Root, func() interface{} {
 		this.Dependencies = &sync.Map{}
-		pjson, err := ParsePackage(this.Root)
-		if os.IsNotExist(err) {
-			this.install()
-			pjson, err = ParsePackage(this.Root)
+		if this.PJSON == nil {
+			pjson, err := ParsePackage(this.Root)
+			if os.IsNotExist(err) {
+				this.install()
+				pjson, err = ParsePackage(this.Root)
+			}
+			must(err)
+			this.PJSON = pjson
 		}
-		must(err)
-		this.PJSON = pjson
 		version, err := semver.NewVersion(this.PJSON.Version)
 		if this.PJSON.Version != "" {
 			must(err)
@@ -122,7 +126,7 @@ func (this *Package) Refresh() {
 		this.Version = version
 		this.Name = this.PJSON.Name
 		deps := []*Package{}
-		for name, requestedVersion := range pjson.Dependencies {
+		for name, requestedVersion := range this.PJSON.Dependencies {
 			constraint, err := semver.NewConstraint(requestedVersion)
 			must(err)
 			dep := this.addDep(name, constraint)

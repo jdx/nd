@@ -1,7 +1,25 @@
 package main
 
-import "github.com/jdxcode/nd/cmd"
+import (
+	"os"
+	"os/exec"
+
+	nd "github.com/jdxcode/nd/lib"
+)
 
 func main() {
-	cmd.Execute()
+	nd.Load("")
+	args := os.Args[1:]
+	proc := exec.Command("node", args...)
+	proc.Stdin = os.Stdin
+	proc.Stdout = os.Stdout
+	proc.Stderr = os.Stderr
+	must(proc.Run())
+	// cmd.Execute()
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
