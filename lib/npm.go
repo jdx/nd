@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -16,6 +15,12 @@ import (
 	"github.com/Masterminds/semver"
 	"github.com/apex/log"
 )
+
+func Load(root string) *Package {
+	pkg := Package{Root: root}
+	pkg.Refresh()
+	return &pkg
+}
 
 func envOrDefault(k, def string) string {
 	v := os.Getenv(k)
@@ -29,7 +34,7 @@ func init() {
 	log.SetLevelFromString(envOrDefault("ND_LOG", "warn"))
 }
 
-type Package struct {
+type PJSON struct {
 	Name         string            `json:"name"`
 	Version      string            `json:"version"`
 	Dependencies map[string]string `json:"dependencies"`
@@ -39,54 +44,119 @@ type Manifest struct {
 	Name     string `json:"name"`
 	Versions map[string]struct {
 		Dist struct {
-			Tarball string `json:"tarball"`
+			Integrity string `json:"integrity"`
+			Tarball   string `json:"tarball"`
 		} `json:"dist"`
 	} `json:"versions"`
 }
 
 var cache = sync.Map{}
 
-func getMaxVersion(name, r string, manifest *Manifest) string {
-	rng, err := semver.NewConstraint(r)
-	must(err)
-	parsedVersions := []*semver.Version{}
-	for v := range manifest.Versions {
-		parsed, err := semver.NewVersion(v)
-		must(err)
-		if rng.Check(parsed) {
-			parsedVersions = append(parsedVersions, parsed)
-		}
-	}
-	sort.Sort(semver.Collection(parsedVersions))
-
-	if len(parsedVersions) < 1 {
-		panic("no version found for " + name)
-	}
-
-	return parsedVersions[len(parsedVersions)-1].String()
-}
-
 func fetch(key string, fn func() interface{}) interface{} {
-	log.Debugf("cache: fetching %s", key)
-	wgOrManifest, loaded := cache.LoadOrStore(key, &sync.WaitGroup{})
-	if loaded {
-		if manifest, ok := wgOrManifest.(*Manifest); ok {
-			log.Debugf("cache: found %s", key)
-			return manifest
-		}
-		log.Debugf("cache: waiting for %s", key)
-		wg := wgOrManifest.(*sync.WaitGroup)
-		wg.Wait()
-		return fetch(key, fn)
+	type CacheEntry struct {
+		wg  *sync.WaitGroup
+		val interface{}
 	}
-	wg := wgOrManifest.(*sync.WaitGroup)
+	// log.Debugf("cache: fetching %s", key)
+	wg := sync.WaitGroup{}
 	wg.Add(1)
 	defer wg.Done()
+	i, loaded := cache.LoadOrStore(key, &CacheEntry{wg: &wg})
+	entry := i.(*CacheEntry)
+	if loaded {
+		entry.wg.Wait()
+		return entry.val
+	}
 	log.Infof("cache: computing %s", key)
-	result := fn()
-	// log.Debugf("cache: computed %s", key)
-	cache.Store(key, result)
-	return result
+	entry.val = fn()
+	return entry.val
+}
+
+func ParsePackage(root string) (*PJSON, error) {
+	// return fetch("ParsePackage:"+root, func() interface{} {
+	p := path.Join(root, "package.json")
+	log.Debugf("ParsePackage %s", p)
+	var pkg PJSON
+	file, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.NewDecoder(file).Decode(&pkg); err != nil {
+		return nil, err
+	}
+	return &pkg, nil
+	// }).(*Package)
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+type Package struct {
+	Root         string
+	Name         string
+	Version      *semver.Version
+	Dependencies *sync.Map
+	Parent       *Package
+	PJSON        *PJSON
+}
+
+func (this *Package) Refresh() {
+	fetch("package.Refresh:"+this.Root, func() interface{} {
+		this.Dependencies = &sync.Map{}
+		pjson, err := ParsePackage(this.Root)
+		if os.IsNotExist(err) {
+			this.install()
+			pjson, err = ParsePackage(this.Root)
+		}
+		must(err)
+		this.PJSON = pjson
+		version, err := semver.NewVersion(this.PJSON.Version)
+		must(err)
+		this.Version = version
+		this.Name = this.PJSON.Name
+		deps := []*Package{}
+		for name, requestedVersion := range pjson.Dependencies {
+			constraint, err := semver.NewConstraint(requestedVersion)
+			must(err)
+			deps = append(deps, this.addDep(name, constraint))
+		}
+		wg := sync.WaitGroup{}
+		for _, dep := range deps {
+			wg.Add(1)
+			go func(dep *Package) {
+				dep.Refresh()
+				defer wg.Done()
+			}(dep)
+		}
+		wg.Wait()
+		return nil
+	})
+}
+
+func (this *Package) addDep(name string, r *semver.Constraints) *Package {
+	if this.Parent != nil {
+		dep := this.Parent.addDep(name, r)
+		if dep != nil {
+			return dep
+		}
+	}
+	i, loaded := this.Dependencies.LoadOrStore(name, &Package{
+		Root:    path.Join(this.Root, "node_modules", name),
+		Name:    name,
+		Version: getMinVersion(name, r),
+		Parent:  this,
+	})
+	pkg := i.(*Package)
+	if r.Check(pkg.Version) {
+		return pkg
+	}
+	if !loaded {
+		panic("already loaded incompatible version: " + name)
+	}
+	return nil
 }
 
 func FetchManifest(name string) *Manifest {
@@ -104,35 +174,12 @@ func FetchManifest(name string) *Manifest {
 	}).(*Manifest)
 }
 
-func ParsePackage(root string) (*Package, error) {
-	// return fetch("ParsePackage:"+root, func() interface{} {
-	p := path.Join(root, "package.json")
-	log.Debugf("ParsePackage %s", p)
-	var pkg Package
-	file, err := os.Open(p)
-	if err != nil {
-		return nil, err
-	}
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&pkg)
-	if err != nil {
-		return nil, err
-	}
-	return &pkg, nil
-	// }).(*Package)
-}
-
-func must(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func install(dir, name, requiredVersion string) {
-	manifest := FetchManifest(name)
-	version := manifest.Versions[getMaxVersion(name, requiredVersion, manifest)]
-	url := version.Dist.Tarball
-	log.Infof("%s -> %s", url, dir)
+func (this *Package) install() {
+	log.Infof("installing %s@%s to %s", this.Name, this.Version, this.Root)
+	manifest := FetchManifest(this.Name)
+	dist := manifest.Versions[this.Version.String()].Dist
+	url := dist.Tarball
+	log.Infof("%s -> %s", url, this.Root)
 	rsp, err := http.Get(url)
 	must(err)
 	if rsp.StatusCode != 200 {
@@ -148,37 +195,39 @@ func install(dir, name, requiredVersion string) {
 		}
 		must(err)
 		p := strings.TrimPrefix(hdr.Name, "package/")
-		p = path.Join(dir, p)
+		p = path.Join(this.Root, p)
 		must(os.MkdirAll(path.Dir(p), 0755))
 		f, err := os.Create(p)
 		must(err)
 		_, err = io.Copy(f, tr)
 		must(err)
 	}
+	f, err := os.Open(path.Join(this.Root, "package.json"))
+	var pjson map[string]interface{}
+	must(json.NewDecoder(f).Decode(&pjson))
+	pjson["_integrity"] = dist.Integrity
+	f, err = os.Create(path.Join(this.Root, "package.json"))
+	must(err)
+	encoder := json.NewEncoder(f)
+	encoder.SetIndent("", "  ")
+	must(encoder.Encode(&pjson))
 }
 
-func Refresh(root string) {
-	var refresh func(root string, wg *sync.WaitGroup)
-	refresh = func(root string, wg *sync.WaitGroup) {
-		log.Debugf("refresh %s", root)
-		ensure := func(name, requiredVersion string) {
-			fmt.Println(root)
-			defer wg.Done()
-			dir := path.Join(root, "node_modules", name)
-			_, err := ParsePackage(dir)
-			if os.IsNotExist(err) {
-				install(dir, name, requiredVersion)
-			}
-			refresh(dir, wg)
-		}
-		pkg, err := ParsePackage(root)
+func getMinVersion(name string, r *semver.Constraints) *semver.Version {
+	manifest := FetchManifest(name)
+	parsedVersions := []*semver.Version{}
+	for v := range manifest.Versions {
+		parsed, err := semver.NewVersion(v)
 		must(err)
-		for name, version := range pkg.Dependencies {
-			wg.Add(1)
-			go ensure(name, version)
+		if r.Check(parsed) {
+			parsedVersions = append(parsedVersions, parsed)
 		}
 	}
-	wg := sync.WaitGroup{}
-	refresh(root, &wg)
-	wg.Wait()
+	sort.Sort(semver.Collection(parsedVersions))
+
+	if len(parsedVersions) < 1 {
+		panic("no version found for " + name)
+	}
+
+	return parsedVersions[0]
 }
