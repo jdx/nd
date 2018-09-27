@@ -166,7 +166,58 @@ type Package struct {
 
 func (this *Package) Refresh() {
 	cache = sync.Map{}
+	this.init()
 	this.refresh(true)
+	this.validate()
+}
+
+func (this *Package) validate() {
+	for key, requestedVersion := range this.PJSON.Dependencies {
+		r := semver.MustParseRange(requestedVersion)
+		dep := this.require(key)
+		r.Valid(dep.Version)
+	}
+	this.Dependencies.Range(func(key interface{}, d interface{}) bool {
+		dep := d.(*Package)
+		dep.validate()
+		return true
+	})
+}
+
+func (this *Package) init() {
+	log.Debugf("%s", this.Root)
+	readdir := func(dir string) []os.FileInfo {
+		files, err := ioutil.ReadDir(path.Join(this.Root, "node_modules"))
+		if os.IsNotExist(err) {
+			return []os.FileInfo{}
+		}
+		must(err)
+		return files
+	}
+	deps := []string{}
+	modules := path.Join(this.Root, "node_modules")
+	for _, file := range readdir(modules) {
+		if !file.IsDir() {
+			continue
+		}
+		dir := file.Name()
+		if strings.HasPrefix(dir, "@") {
+			for _, file2 := range readdir(path.Join(modules, dir)) {
+				if !file2.IsDir() {
+					continue
+				}
+				deps = append(deps, path.Join(dir, file2.Name()))
+			}
+		} else {
+			deps = append(deps, dir)
+		}
+	}
+	sort.Strings(deps)
+	for _, d := range deps {
+		if !fileExists(path.Join(modules, d, "package.json")) {
+			continue
+		}
+	}
 }
 
 func (this *Package) refresh(dev bool) {
@@ -259,11 +310,11 @@ func (fl FileList) Less(i, j int) bool {
 func FetchManifest(name string) *Manifest {
 	return fetch("manifest:"+name, func() interface{} {
 		var manifest Manifest
-		cachePath := path.Join(tmpDir, "manifests", name)
+		cacheRoot := path.Join(tmpDir, "manifests", name)
 		etag := func() string {
 			var files FileList
 			var err error
-			files, err = ioutil.ReadDir(cachePath)
+			files, err = ioutil.ReadDir(cacheRoot)
 			if os.IsNotExist(err) {
 				return ""
 			}
@@ -275,28 +326,39 @@ func FetchManifest(name string) *Manifest {
 			return strings.Split(files[len(files)-1].Name(), ".")[0]
 		}()
 		url := "https://registry.npmjs.org/" + name
-		log.Debugf("HTTP GET %s", url)
-		client := http.Client{}
-		req, err := http.NewRequest("GET", url, nil)
-		if etag != "" {
-			req.Header.Set("If-None-Match", `"`+etag+`"`)
-		}
-		must(err)
-		rsp, err := client.Do(req)
-		must(err)
-		log.Infof("HTTP GET %s %d", url, rsp.StatusCode)
-		if rsp.StatusCode == 304 {
-			cachePath = path.Join(cachePath, etag+".json")
-			cache, err := os.Open(cachePath)
+		get := func(etag string) *http.Response {
+			log.Debugf("HTTP GET %s", url)
+			client := http.Client{}
+			req, err := http.NewRequest("GET", url, nil)
+			if etag != "" {
+				req.Header.Set("If-None-Match", `"`+etag+`"`)
+			}
 			must(err)
-			must(json.NewDecoder(cache).Decode(&manifest))
-			return &manifest
+			rsp, err := client.Do(req)
+			must(err)
+			log.Infof("HTTP GET %s %d", url, rsp.StatusCode)
+			return rsp
+		}
+		rsp := get(etag)
+		if rsp.StatusCode == 304 {
+			cachePath := path.Join(cacheRoot, etag+".json")
+			cache, err := os.Open(cachePath)
+			if err == nil {
+				if err = json.NewDecoder(cache).Decode(&manifest); err == nil {
+					return &manifest
+				}
+			}
+			if err != nil {
+				log.Warnf("HTTP GET %s %s", url, err.Error())
+				must(os.RemoveAll(cacheRoot))
+				rsp = get("")
+			}
 		}
 		if rsp.StatusCode != 200 {
 			panic("invalid status code " + url + " " + rsp.Status)
 		}
 		etag = strings.Trim(strings.TrimLeft(rsp.Header.Get("etag"), "W/"), `"`)
-		cachePath = path.Join(cachePath, etag+".json")
+		cachePath := path.Join(cacheRoot, etag+".json")
 		must(os.MkdirAll(path.Dir(cachePath), 0755))
 		cache, err := os.Create(cachePath)
 		must(err)
@@ -462,14 +524,12 @@ func (this *Package) isRequiredBy(other *Package) bool {
 }
 
 func (this *Package) getIdealVersion(name string, r *semver.Range) *semver.Version {
-	if current := this.getCurrentVersion(name, r); current != nil {
-		return current
-	}
 	if this.PackageLock != nil {
-		lock := this.PackageLock.Dependencies[name]
-		version := semver.MustParse(lock.Version)
-		if lock != nil && r.Valid(version) {
-			return version
+		if lock := this.PackageLock.Dependencies[name]; lock != nil {
+			version := semver.MustParse(lock.Version)
+			if r.Valid(version) {
+				return version
+			}
 		}
 	}
 	return getMinVersion(name, r)
@@ -487,6 +547,16 @@ func (this *Package) getCurrentVersion(name string, r *semver.Range) *semver.Ver
 	version := semver.MustParse(pjson.Version)
 	if r.Valid(version) {
 		return version
+	}
+	return nil
+}
+
+func (this *Package) require(name string) *Package {
+	if dep, ok := this.Dependencies.Load(name); ok {
+		return dep.(*Package)
+	}
+	if this.Parent != nil {
+		return this.Parent.require(name)
 	}
 	return nil
 }
