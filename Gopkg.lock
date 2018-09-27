@@ -34,12 +34,12 @@
   revision = "609848f5019ef87508f6e1241a31bd141fb42542"
 
 [[projects]]
-  digest = "1:55388fd080150b9a072912f97b1f5891eb0b50df43401f8b75fb4273d3fec9fc"
-  name = "github.com/jdxcode/semver"
+  branch = "master"
+  digest = "1:ee2181f2a5dc5fbcbdc650b51a34f98a4dfb733381397ab4314c15841f1591af"
+  name = "github.com/jdxcode/go-semver"
   packages = ["."]
   pruneopts = "UT"
-  revision = "c7af12943936e8c39859482e61f0574c2fd7fc75"
-  version = "v1.4.2"
+  revision = "9922cd6b158ffb548f52a69393376d2936b6bf46"
 
 [[projects]]
   digest = "1:78bbb1ba5b7c3f2ed0ea1eab57bdd3859aec7e177811563edc41198a760b06af"
@@ -95,7 +95,7 @@
   input-imports = [
     "github.com/apex/log",
     "github.com/jdxcode/clonedir",
-    "github.com/jdxcode/semver",
+    "github.com/jdxcode/go-semver",
     "github.com/mitchellh/go-homedir",
     "github.com/spf13/cobra",
     "github.com/stretchr/testify/assert",

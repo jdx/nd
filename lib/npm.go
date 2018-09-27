@@ -18,7 +18,7 @@ import (
 
 	"github.com/apex/log"
 	"github.com/jdxcode/clonedir"
-	"github.com/jdxcode/semver"
+	semver "github.com/jdxcode/go-semver"
 	homedir "github.com/mitchellh/go-homedir"
 )
 
@@ -27,9 +27,9 @@ func Load(root string) *Package {
 	must(err)
 	pjson, err := ParsePackage(root)
 	must(err)
-	version, err := semver.NewVersion(pjson.Version)
+	var version *semver.Version
 	if pjson.Version != "" {
-		must(err)
+		version = semver.MustParse(pjson.Version)
 	}
 	pkg := Package{Name: pjson.Name, Root: root, PJSON: pjson, Version: version}
 	lock, err := ParsePackageLock(root)
@@ -178,7 +178,7 @@ func (this *Package) refresh(dev bool) {
 		this.Dependencies = &sync.Map{}
 		if this.PJSON == nil {
 			pjson, err := ParsePackage(this.Root)
-			if os.IsNotExist(err) || pjson.Version != this.Version.String() {
+			if os.IsNotExist(err) || !semver.MustParse(pjson.Version).EQ(this.Version) {
 				this.install()
 				pjson, err = ParsePackage(this.Root)
 			}
@@ -187,7 +187,7 @@ func (this *Package) refresh(dev bool) {
 		}
 		deps := []*Package{}
 		addDep := func(name, requestedVersion string) {
-			dep := this.addDep(name, requestedVersion)
+			dep := this.addDep(name, semver.MustParseRange(requestedVersion))
 			dep.mutex.Lock()
 			dep.requiredBy = append(dep.requiredBy, this)
 			dep.mutex.Unlock()
@@ -218,13 +218,7 @@ func (this *Package) refresh(dev bool) {
 	})
 }
 
-func parseConstraint(r string) *semver.Constraints {
-	rng, err := semver.NewConstraint(r)
-	must(err)
-	return rng
-}
-
-func (this *Package) addDep(name, r string) *Package {
+func (this *Package) addDep(name string, r *semver.Range) *Package {
 	if this.Parent != nil {
 		dep := this.Parent.addDep(name, r)
 		if dep != nil {
@@ -240,12 +234,11 @@ func (this *Package) addDep(name, r string) *Package {
 		mutex:   &sync.Mutex{},
 	})
 	pkg := i.(*Package)
-	rng := parseConstraint(r)
-	if rng.Check(pkg.Version) {
+	if r.Valid(pkg.Version) {
 		return pkg
 	}
 	if !loaded {
-		panic(fmt.Sprintf("already loaded incompatible version: %s@%s expected: %s", name, pkg.Version.String(), r))
+		panic(fmt.Sprintf("already loaded incompatible version: %s@%s expected: %#v", name, pkg.Version.String(), r))
 	}
 	return nil
 }
@@ -343,7 +336,7 @@ func (this *Package) install() {
 }
 
 func (this *Package) getTarball() *ManifestDist {
-	if dist := this.findLockTarball(this.Name, this.Version.String()); dist != nil {
+	if dist := this.findLockTarball(this.Name, this.Version); dist != nil {
 		return dist
 	}
 	version := this.Version.String()
@@ -352,7 +345,7 @@ func (this *Package) getTarball() *ManifestDist {
 	return dist
 }
 
-func (this *Package) findLockTarball(name, version string) *ManifestDist {
+func (this *Package) findLockTarball(name string, version *semver.Version) *ManifestDist {
 	if this.Parent != nil {
 		return this.Parent.findLockTarball(name, version)
 	}
@@ -362,7 +355,7 @@ func (this *Package) findLockTarball(name, version string) *ManifestDist {
 			return nil
 		}
 		for depName, dep := range lock.Dependencies {
-			if depName == name && dep.Version == version {
+			if depName == name && semver.MustParse(dep.Version).EQ(version) {
 				return dep
 			}
 			if dep := find(dep); dep != nil {
@@ -438,19 +431,16 @@ func setIntegrity(root, integrity string) {
 	must(encoder.Encode(&pjson))
 }
 
-func getMinVersion(name, r string) *semver.Version {
-	rng, err := semver.NewConstraint(r)
-	must(err)
+func getMinVersion(name string, r *semver.Range) *semver.Version {
 	manifest := FetchManifest(name)
-	parsedVersions := []*semver.Version{}
-	for v := range manifest.Versions {
-		parsed, err := semver.NewVersion(v)
-		must(err)
-		if rng.Check(parsed) {
-			parsedVersions = append(parsedVersions, parsed)
+	parsedVersions := semver.Versions{}
+	for raw := range manifest.Versions {
+		v := semver.MustParse(raw)
+		if r.Valid(v) {
+			parsedVersions = append(parsedVersions, v)
 		}
 	}
-	sort.Sort(semver.Collection(parsedVersions))
+	sort.Sort(parsedVersions)
 
 	if len(parsedVersions) < 1 {
 		panic("no version found for " + name)
@@ -471,25 +461,21 @@ func (this *Package) isRequiredBy(other *Package) bool {
 	return false
 }
 
-func (this *Package) getIdealVersion(name, r string) *semver.Version {
+func (this *Package) getIdealVersion(name string, r *semver.Range) *semver.Version {
 	if current := this.getCurrentVersion(name, r); current != nil {
 		return current
 	}
 	if this.PackageLock != nil {
 		lock := this.PackageLock.Dependencies[name]
-		if lock != nil {
-			version, err := semver.NewVersion(lock.Version)
-			must(err)
-			rng := parseConstraint(r)
-			if rng.Check(version) {
-				return version
-			}
+		version := semver.MustParse(lock.Version)
+		if lock != nil && r.Valid(version) {
+			return version
 		}
 	}
 	return getMinVersion(name, r)
 }
 
-func (this *Package) getCurrentVersion(name, r string) *semver.Version {
+func (this *Package) getCurrentVersion(name string, r *semver.Range) *semver.Version {
 	pjson, err := ParsePackage(path.Join(this.Root, "node_modules", name))
 	if os.IsNotExist(err) {
 		if this.Parent != nil {
@@ -498,10 +484,8 @@ func (this *Package) getCurrentVersion(name, r string) *semver.Version {
 		return nil
 	}
 	must(err)
-	version, err := semver.NewVersion(pjson.Version)
-	must(err)
-	rng := parseConstraint(r)
-	if rng.Check(version) {
+	version := semver.MustParse(pjson.Version)
+	if r.Valid(version) {
 		return version
 	}
 	return nil
