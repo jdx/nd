@@ -4,5 +4,8 @@
   "dependencies": {
     "edon-test-a": "0.0.1",
     "edon-test-c": "^1.0.3"
+  },
+  "devDependencies": {
+    "nd-a": "^1.0.0"
   }
 }

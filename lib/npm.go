@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -17,6 +18,8 @@ import (
 )
 
 func Load(root string) *Package {
+	root, err := filepath.Abs(root)
+	must(err)
 	pjson, err := ParsePackage(root)
 	must(err)
 	pkg := Package{Root: root, PJSON: pjson}
@@ -37,9 +40,10 @@ func init() {
 }
 
 type PJSON struct {
-	Name         string            `json:"name"`
-	Version      string            `json:"version"`
-	Dependencies map[string]string `json:"dependencies"`
+	Name            string             `json:"name"`
+	Version         string             `json:"version"`
+	Dependencies    map[string]string  `json:"dependencies"`
+	DevDependencies *map[string]string `json:"devDependencies"`
 }
 
 type Manifest struct {
@@ -69,7 +73,7 @@ func fetch(key string, fn func() interface{}) interface{} {
 		entry.wg.Wait()
 		return entry.val
 	}
-	log.Infof("cache: computing %s", key)
+	// log.Infof("cache: computing %s", key)
 	entry.val = fn()
 	return entry.val
 }
@@ -108,6 +112,10 @@ type Package struct {
 }
 
 func (this *Package) Refresh() {
+	this.refresh(true)
+}
+
+func (this *Package) refresh(dev bool) {
 	fetch("package.Refresh:"+this.Root, func() interface{} {
 		this.Dependencies = &sync.Map{}
 		if this.PJSON == nil {
@@ -126,7 +134,7 @@ func (this *Package) Refresh() {
 		this.Version = version
 		this.Name = this.PJSON.Name
 		deps := []*Package{}
-		for name, requestedVersion := range this.PJSON.Dependencies {
+		addDep := func(name, requestedVersion string) {
 			constraint, err := semver.NewConstraint(requestedVersion)
 			must(err)
 			dep := this.addDep(name, constraint)
@@ -134,6 +142,14 @@ func (this *Package) Refresh() {
 			dep.requiredBy = append(dep.requiredBy, this)
 			dep.mutex.Unlock()
 			deps = append(deps, dep)
+		}
+		for name, requestedVersion := range this.PJSON.Dependencies {
+			addDep(name, requestedVersion)
+		}
+		if dev && this.PJSON.DevDependencies != nil {
+			for name, requestedVersion := range *this.PJSON.DevDependencies {
+				addDep(name, requestedVersion)
+			}
 		}
 		wg := sync.WaitGroup{}
 		for _, dep := range deps {
@@ -144,7 +160,7 @@ func (this *Package) Refresh() {
 			wg.Add(1)
 			go func(dep *Package) {
 				defer wg.Done()
-				dep.Refresh()
+				dep.refresh(false)
 			}(dep)
 		}
 		wg.Wait()
@@ -179,6 +195,7 @@ func (this *Package) addDep(name string, r *semver.Constraints) *Package {
 func FetchManifest(name string) *Manifest {
 	return fetch("manifest:"+name, func() interface{} {
 		url := "https://registry.npmjs.org/" + name
+		log.Infof("HTTP GET %s", url)
 		rsp, err := http.Get(url)
 		must(err)
 		if rsp.StatusCode != 200 {
@@ -192,11 +209,11 @@ func FetchManifest(name string) *Manifest {
 }
 
 func (this *Package) install() {
-	log.Infof("installing %s@%s to %s", this.Name, this.Version, this.Root)
+	log.Debugf("installing %s@%s to %s", this.Name, this.Version, this.Root)
 	manifest := FetchManifest(this.Name)
 	dist := manifest.Versions[this.Version.String()].Dist
 	url := dist.Tarball
-	log.Infof("%s -> %s", url, this.Root)
+	log.Infof("HTTP GET %s", url)
 	rsp, err := http.Get(url)
 	must(err)
 	if rsp.StatusCode != 200 {

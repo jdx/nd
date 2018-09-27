@@ -20,6 +20,7 @@ func Test1Example(t *testing.T) {
 	root := path.Join(fixtures, "1-example")
 	os.RemoveAll(path.Join(root, "node_modules"))
 	Load(root)
+	checkVersion(t, path.Join(root, "node_modules/nd-a"), "1.0.0")
 	checkVersion(t, path.Join(root, "node_modules/edon-test-a"), "0.0.1")
 	checkVersion(t, path.Join(root, "node_modules/edon-test-b"), "0.0.1")
 	checkVersion(t, path.Join(root, "node_modules/edon-test-c"), "1.0.3")
