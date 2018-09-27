@@ -81,11 +81,13 @@ type PackageLock struct {
 type Manifest struct {
 	Name     string `json:"name"`
 	Versions map[string]struct {
-		Dist struct {
-			Integrity string `json:"integrity"`
-			Tarball   string `json:"tarball"`
-		} `json:"dist"`
+		Dist *ManifestDist `json:"dist"`
 	} `json:"versions"`
+}
+
+type ManifestDist struct {
+	Integrity string `json:"integrity"`
+	Tarball   string `json:"tarball"`
 }
 
 var cache = sync.Map{}
@@ -334,14 +336,51 @@ func (this *Package) install() {
 	cacheLocation := path.Join(tmpDir, "packages", this.Name, version)
 
 	if !fileExists(cacheLocation) {
-		manifest := FetchManifest(this.Name)
-		dist := manifest.Versions[version].Dist
-		url := dist.Tarball
-		extractTarFromUrl(url, cacheLocation)
+		dist := this.getTarball()
+		extractTarFromUrl(dist.Tarball, cacheLocation)
 		setIntegrity(cacheLocation, dist.Integrity)
 	}
 
 	clonedir.Clone(cacheLocation, this.Root)
+}
+
+func (this *Package) getTarball() *ManifestDist {
+	if dist := this.findLockTarball(this.Name, this.Version.String()); dist != nil {
+		return dist
+	}
+	version := this.Version.String()
+	manifest := FetchManifest(this.Name)
+	dist := manifest.Versions[version].Dist
+	return dist
+}
+
+func (this *Package) findLockTarball(name, version string) *ManifestDist {
+	if this.Parent != nil {
+		return this.Parent.findLockTarball(name, version)
+	}
+	var find func(lock *PackageLock) *PackageLock
+	find = func(lock *PackageLock) *PackageLock {
+		if this.PackageLock == nil {
+			return nil
+		}
+		for depName, dep := range lock.Dependencies {
+			if depName == name && dep.Version == version {
+				return dep
+			}
+			if dep := find(dep); dep != nil {
+				return dep
+			}
+		}
+		return nil
+	}
+	dep := find(this.PackageLock)
+	if dep == nil {
+		return nil
+	}
+	return &ManifestDist{
+		Integrity: dep.Integrity,
+		Tarball:   dep.Resolved,
+	}
 }
 
 func extractTarFromUrl(url, to string) {
