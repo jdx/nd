@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -13,8 +14,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Masterminds/semver"
 	"github.com/apex/log"
+	"github.com/jdxcode/semver"
 )
 
 func Load(root string) *Package {
@@ -228,19 +229,39 @@ func (this *Package) install() {
 			break
 		}
 		must(err)
-		p := strings.TrimPrefix(hdr.Name, "package/")
+
+		// take out first part of path (/package)
+		tokens := strings.SplitAfterN(hdr.Name, fmt.Sprintf("%c", filepath.Separator), 2)
+		if len(tokens) < 2 {
+			continue
+		}
+		p := tokens[1]
+
+		fi := hdr.FileInfo()
+		mode := fi.Mode()
 		p = path.Join(this.Root, p)
 		must(os.MkdirAll(path.Dir(p), 0755))
-		f, err := os.Create(p)
-		must(err)
-		_, err = io.Copy(f, tr)
-		must(err)
+		if mode.IsDir() {
+			log.Debugf("creating directory %s", p)
+			must(os.MkdirAll(path.Dir(p), 0755))
+		} else if mode.IsRegular() {
+			f, err := os.Create(p)
+			must(err)
+			_, err = io.Copy(f, tr)
+			must(err)
+		}
 	}
-	f, err := os.Open(path.Join(this.Root, "package.json"))
+	setIntegrity(this.Root, dist.Integrity)
+}
+
+func setIntegrity(root, integrity string) {
+	pjsonPath := path.Join(root, "package.json")
+	log.Debugf("setIntegrity(%s)", pjsonPath)
+	f, err := os.Open(pjsonPath)
 	var pjson map[string]interface{}
 	must(json.NewDecoder(f).Decode(&pjson))
-	pjson["_integrity"] = dist.Integrity
-	f, err = os.Create(path.Join(this.Root, "package.json"))
+	pjson["_integrity"] = integrity
+	f, err = os.Create(pjsonPath)
 	must(err)
 	encoder := json.NewEncoder(f)
 	encoder.SetIndent("", "  ")

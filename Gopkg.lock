@@ -2,12 +2,28 @@
 
 
 [[projects]]
-  digest = "1:705c40022f5c03bf96ffeb6477858d88565064485a513abcd0f11a0911546cb6"
-  name = "github.com/blang/semver"
+  digest = "1:55388fd080150b9a072912f97b1f5891eb0b50df43401f8b75fb4273d3fec9fc"
+  name = "github.com/Masterminds/semver"
   packages = ["."]
   pruneopts = "UT"
-  revision = "2ee87856327ba09384cabd113bc6b5d174e9ec0f"
-  version = "v3.5.1"
+  revision = "c7af12943936e8c39859482e61f0574c2fd7fc75"
+  version = "v1.4.2"
+
+[[projects]]
+  digest = "1:40261f597e43f31aaf9f8658b85c082773217943056f1be137635e769c0798c9"
+  name = "github.com/apex/log"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "0296d6eb16bb28f8a0c55668affcf4876dc269be"
+  version = "v1.0.0"
+
+[[projects]]
+  digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  pruneopts = "UT"
+  revision = "8991bc29aa16c548c550c7ff78260e27b9ab7c73"
+  version = "v1.1.1"
 
 [[projects]]
   digest = "1:870d441fe217b8e689d7949fef6e43efbc787e50f200cb1e70dbca9204a1d6be"
@@ -16,6 +32,14 @@
   pruneopts = "UT"
   revision = "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
   version = "v1.0"
+
+[[projects]]
+  digest = "1:55388fd080150b9a072912f97b1f5891eb0b50df43401f8b75fb4273d3fec9fc"
+  name = "github.com/jdxcode/semver"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "c7af12943936e8c39859482e61f0574c2fd7fc75"
+  version = "v1.4.2"
 
 [[projects]]
   digest = "1:ca955a9cd5b50b0f43d2cc3aeb35c951473eeca41b34eb67507f1dbcc0542394"
@@ -34,6 +58,22 @@
   version = "v0.1.0"
 
 [[projects]]
+  digest = "1:40e195917a951a8bf867cd05de2a46aaf1806c50cf92eebf4c16f78cd196f747"
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
+
+[[projects]]
+  digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  pruneopts = "UT"
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:645cabccbb4fa8aab25a956cbcbdf6a6845ca736b2c64e197ca7cbb9d210b939"
   name = "github.com/spf13/cobra"
   packages = ["."]
@@ -50,6 +90,14 @@
   version = "v1.0.2"
 
 [[projects]]
+  digest = "1:18752d0b95816a1b777505a97f71c7467a8445b8ffb55631a7bf779f6ba4fa83"
+  name = "github.com/stretchr/testify"
+  packages = ["assert"]
+  pruneopts = "UT"
+  revision = "f35b8ab0b5a2cef36673838d662e249dd9c94686"
+  version = "v1.2.2"
+
+[[projects]]
   digest = "1:af5b0eae47d6e40d8a7597c30397f4edbe747a985ceb35651303816435a889bf"
   name = "github.com/y0ssar1an/q"
   packages = ["."]
@@ -61,8 +109,11 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
-    "github.com/blang/semver",
+    "github.com/Masterminds/semver",
+    "github.com/apex/log",
+    "github.com/jdxcode/semver",
     "github.com/spf13/cobra",
+    "github.com/stretchr/testify/assert",
     "github.com/y0ssar1an/q",
   ]
   solver-name = "gps-cdcl"
