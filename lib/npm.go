@@ -159,6 +159,7 @@ type Package struct {
 }
 
 func (this *Package) Refresh() {
+	cache = sync.Map{}
 	this.refresh(true)
 }
 
