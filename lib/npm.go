@@ -28,6 +28,14 @@ func Load(root string) *Package {
 	pjson, err := ParsePackage(root)
 	must(err)
 	pkg := Package{Root: root, PJSON: pjson}
+	lock, err := ParsePackageLock(root)
+	if lock != nil {
+		pkg.PackageLock = lock
+	} else {
+		if !os.IsNotExist(err) {
+			panic(err)
+		}
+	}
 	pkg.Refresh()
 	return &pkg
 }
@@ -60,6 +68,14 @@ type PJSON struct {
 	Version         string             `json:"version"`
 	Dependencies    map[string]string  `json:"dependencies"`
 	DevDependencies *map[string]string `json:"devDependencies"`
+}
+
+type PackageLock struct {
+	Version      string                  `json:"version"`
+	Resolved     string                  `json:"resolved"`
+	Integrity    string                  `json:"integrity"`
+	Requires     interface{}             `json:"requires"`
+	Dependencies map[string]*PackageLock `json:"dependencies"`
 }
 
 type Manifest struct {
@@ -110,6 +126,20 @@ func ParsePackage(root string) (*PJSON, error) {
 	// }).(*Package)
 }
 
+func ParsePackageLock(root string) (*PackageLock, error) {
+	p := path.Join(root, "package-lock.json")
+	log.Debugf("ParsePackageLock %s", p)
+	var pkg PackageLock
+	file, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.NewDecoder(file).Decode(&pkg); err != nil {
+		return nil, err
+	}
+	return &pkg, nil
+}
+
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -125,6 +155,7 @@ type Package struct {
 	PJSON        *PJSON
 	mutex        *sync.Mutex
 	requiredBy   []*Package
+	PackageLock  *PackageLock
 }
 
 func (this *Package) Refresh() {
@@ -133,6 +164,10 @@ func (this *Package) Refresh() {
 
 func (this *Package) refresh(dev bool) {
 	fetch("package.Refresh:"+this.Root, func() interface{} {
+		if this.Parent != nil && this.Parent.PackageLock != nil {
+			deps := this.Parent.PackageLock.Dependencies
+			this.PackageLock = deps[this.Name]
+		}
 		this.Dependencies = &sync.Map{}
 		if this.PJSON == nil {
 			pjson, err := ParsePackage(this.Root)
@@ -151,9 +186,7 @@ func (this *Package) refresh(dev bool) {
 		this.Name = this.PJSON.Name
 		deps := []*Package{}
 		addDep := func(name, requestedVersion string) {
-			constraint, err := semver.NewConstraint(requestedVersion)
-			must(err)
-			dep := this.addDep(name, constraint)
+			dep := this.addDep(name, requestedVersion)
 			dep.mutex.Lock()
 			dep.requiredBy = append(dep.requiredBy, this)
 			dep.mutex.Unlock()
@@ -184,22 +217,30 @@ func (this *Package) refresh(dev bool) {
 	})
 }
 
-func (this *Package) addDep(name string, r *semver.Constraints) *Package {
+func parseConstraint(r string) *semver.Constraints {
+	rng, err := semver.NewConstraint(r)
+	must(err)
+	return rng
+}
+
+func (this *Package) addDep(name, r string) *Package {
 	if this.Parent != nil {
 		dep := this.Parent.addDep(name, r)
 		if dep != nil {
 			return dep
 		}
 	}
+	root := path.Join(this.Root, "node_modules", name)
 	i, loaded := this.Dependencies.LoadOrStore(name, &Package{
-		Root:    path.Join(this.Root, "node_modules", name),
+		Root:    root,
 		Name:    name,
-		Version: getMinVersion(name, r),
+		Version: this.getIdealVersion(name, r),
 		Parent:  this,
 		mutex:   &sync.Mutex{},
 	})
 	pkg := i.(*Package)
-	if r.Check(pkg.Version) {
+	rng := parseConstraint(r)
+	if rng.Check(pkg.Version) {
 		return pkg
 	}
 	if !loaded {
@@ -288,11 +329,11 @@ func fileExists(p string) bool {
 
 func (this *Package) install() {
 	log.Debugf("installing %s@%s to %s", this.Name, this.Version, this.Root)
-	manifest := FetchManifest(this.Name)
 	version := this.Version.String()
 	cacheLocation := path.Join(tmpDir, "packages", this.Name, version)
 
 	if !fileExists(cacheLocation) {
+		manifest := FetchManifest(this.Name)
 		dist := manifest.Versions[version].Dist
 		url := dist.Tarball
 		extractTarFromUrl(url, cacheLocation)
@@ -356,13 +397,15 @@ func setIntegrity(root, integrity string) {
 	must(encoder.Encode(&pjson))
 }
 
-func getMinVersion(name string, r *semver.Constraints) *semver.Version {
+func getMinVersion(name, r string) *semver.Version {
+	rng, err := semver.NewConstraint(r)
+	must(err)
 	manifest := FetchManifest(name)
 	parsedVersions := []*semver.Version{}
 	for v := range manifest.Versions {
 		parsed, err := semver.NewVersion(v)
 		must(err)
-		if r.Check(parsed) {
+		if rng.Check(parsed) {
 			parsedVersions = append(parsedVersions, parsed)
 		}
 	}
@@ -385,4 +428,17 @@ func (this *Package) isRequiredBy(other *Package) bool {
 		}
 	}
 	return false
+}
+
+func (this *Package) getIdealVersion(name, r string) *semver.Version {
+	if this.PackageLock != nil {
+		lock := this.PackageLock.Dependencies[name]
+		if lock != nil {
+			version, err := semver.NewVersion(lock.Version)
+			must(err)
+			return version
+		}
+	}
+	return getMinVersion(name, r)
+
 }
