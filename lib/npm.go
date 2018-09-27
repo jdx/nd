@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -207,18 +208,70 @@ func (this *Package) addDep(name string, r *semver.Constraints) *Package {
 	return nil
 }
 
+type FileList []os.FileInfo
+
+func (fl FileList) Len() int {
+	return len(fl)
+}
+
+func (fl FileList) Swap(i, j int) {
+	fl[i], fl[j] = fl[j], fl[i]
+}
+func (fl FileList) Less(i, j int) bool {
+	return fl[i].ModTime().Before(fl[j].ModTime())
+}
+
 func FetchManifest(name string) *Manifest {
 	return fetch("manifest:"+name, func() interface{} {
+		var manifest Manifest
+		cachePath := path.Join(tmpDir, "manifests", name)
+		etag := func() string {
+			var files FileList
+			var err error
+			files, err = ioutil.ReadDir(cachePath)
+			if os.IsNotExist(err) {
+				return ""
+			}
+			must(err)
+			sort.Sort(files)
+			if len(files) == 0 {
+				return ""
+			}
+			return strings.Split(files[len(files)-1].Name(), ".")[0]
+		}()
 		url := "https://registry.npmjs.org/" + name
-		log.Infof("HTTP GET %s", url)
-		rsp, err := http.Get(url)
+		log.Debugf("HTTP GET %s", url)
+		client := http.Client{}
+		req, err := http.NewRequest("GET", url, nil)
+		if etag != "" {
+			req.Header.Set("If-None-Match", `"`+etag+`"`)
+		}
 		must(err)
+		rsp, err := client.Do(req)
+		must(err)
+		log.Infof("HTTP GET %s %d", url, rsp.StatusCode)
+		if rsp.StatusCode == 304 {
+			cachePath = path.Join(cachePath, etag+".json")
+			cache, err := os.Open(cachePath)
+			must(err)
+			must(json.NewDecoder(cache).Decode(&manifest))
+			return &manifest
+		}
 		if rsp.StatusCode != 200 {
 			panic("invalid status code " + url + " " + rsp.Status)
 		}
-		decoder := json.NewDecoder(rsp.Body)
-		var manifest Manifest
-		decoder.Decode(&manifest)
+		etag = strings.Trim(strings.TrimLeft(rsp.Header.Get("etag"), "W/"), `"`)
+		cachePath = path.Join(cachePath, etag+".json")
+		must(os.MkdirAll(path.Dir(cachePath), 0755))
+		cache, err := os.Create(cachePath)
+		must(err)
+		pipeIn, pipeOut := io.Pipe()
+		multi := io.MultiWriter(cache, pipeOut)
+		go func() {
+			_, err := io.Copy(multi, rsp.Body)
+			must(err)
+		}()
+		must(json.NewDecoder(pipeIn).Decode(&manifest))
 		return &manifest
 	}).(*Manifest)
 }
@@ -237,7 +290,7 @@ func (this *Package) install() {
 	log.Debugf("installing %s@%s to %s", this.Name, this.Version, this.Root)
 	manifest := FetchManifest(this.Name)
 	version := this.Version.String()
-	cacheLocation := path.Join(tmpDir, this.Name, version)
+	cacheLocation := path.Join(tmpDir, "packages", this.Name, version)
 
 	if !fileExists(cacheLocation) {
 		dist := manifest.Versions[version].Dist
