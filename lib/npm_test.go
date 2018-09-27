@@ -18,9 +18,9 @@ func checkVersion(t *testing.T, p, version string) {
 
 func Test1Example(t *testing.T) {
 	os.RemoveAll(tmpDir)
+	root := path.Join(fixtures, "1-example")
+	os.RemoveAll(path.Join(root, "node_modules"))
 	test := func() {
-		root := path.Join(fixtures, "1-example")
-		os.RemoveAll(path.Join(root, "node_modules"))
 		Load(root)
 		checkVersion(t, path.Join(root, "node_modules/nd-a"), "1.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a"), "0.0.1")
@@ -31,28 +31,32 @@ func Test1Example(t *testing.T) {
 		os.RemoveAll(path.Join(root, "node_modules"))
 	}
 	test()
+	os.RemoveAll(path.Join(root, "node_modules"))
+	test()
 	test()
 }
 
 func Test2Circ(t *testing.T) {
+	root := path.Join(fixtures, "2-circ")
 	os.RemoveAll(tmpDir)
+	os.RemoveAll(path.Join(root, "node_modules"))
 	test := func() {
-		root := path.Join(fixtures, "2-circ")
-		os.RemoveAll(path.Join(root, "node_modules"))
 		Load(root)
 		checkVersion(t, path.Join(root, "node_modules/nd-circ-a"), "1.0.0")
 		checkVersion(t, path.Join(root, "node_modules/nd-circ-b"), "1.0.0")
 		os.RemoveAll(path.Join(root, "node_modules"))
 	}
 	test()
+	os.RemoveAll(path.Join(root, "node_modules"))
+	test()
 	test()
 }
 
 func Test3Lock(t *testing.T) {
+	root := path.Join(fixtures, "3-package-lock")
+	os.RemoveAll(tmpDir)
+	os.RemoveAll(path.Join(root, "node_modules"))
 	test := func() {
-		os.RemoveAll(tmpDir)
-		root := path.Join(fixtures, "3-package-lock")
-		os.RemoveAll(path.Join(root, "node_modules"))
 		Load(root)
 		checkVersion(t, path.Join(root, "node_modules/nd-a"), "1.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a"), "0.0.1")
@@ -62,6 +66,8 @@ func Test3Lock(t *testing.T) {
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b/node_modules/edon-test-c"), "0.0.0")
 		os.RemoveAll(path.Join(root, "node_modules"))
 	}
+	test()
+	os.RemoveAll(path.Join(root, "node_modules"))
 	test()
 	test()
 }
