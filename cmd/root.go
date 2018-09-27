@@ -26,5 +26,5 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&project, "project", "p", "", "set node project root")
+	// rootCmd.PersistentFlags().StringVarP(&project, "project", "p", "", "set node project root")
 }
