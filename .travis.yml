@@ -1,8 +1,7 @@
 language: go
 
 script:
-  # - go test -race -coverprofile=coverage.txt -covermode=atomic
-  - ./.travis/test
+  - ./test
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)

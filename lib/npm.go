@@ -480,11 +480,13 @@ func (this *Package) getIdealVersion(name, r string) *semver.Version {
 		if lock != nil {
 			version, err := semver.NewVersion(lock.Version)
 			must(err)
-			return version
+			rng := parseConstraint(r)
+			if rng.Check(version) {
+				return version
+			}
 		}
 	}
 	return getMinVersion(name, r)
-
 }
 
 func (this *Package) getCurrentVersion(name, r string) *semver.Version {
