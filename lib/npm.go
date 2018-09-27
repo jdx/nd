@@ -101,6 +101,8 @@ type Package struct {
 	Dependencies *sync.Map
 	Parent       *Package
 	PJSON        *PJSON
+	mutex        *sync.Mutex
+	requiredBy   []*Package
 }
 
 func (this *Package) Refresh() {
@@ -114,21 +116,31 @@ func (this *Package) Refresh() {
 		must(err)
 		this.PJSON = pjson
 		version, err := semver.NewVersion(this.PJSON.Version)
-		must(err)
+		if this.PJSON.Version != "" {
+			must(err)
+		}
 		this.Version = version
 		this.Name = this.PJSON.Name
 		deps := []*Package{}
 		for name, requestedVersion := range pjson.Dependencies {
 			constraint, err := semver.NewConstraint(requestedVersion)
 			must(err)
-			deps = append(deps, this.addDep(name, constraint))
+			dep := this.addDep(name, constraint)
+			dep.mutex.Lock()
+			dep.requiredBy = append(dep.requiredBy, this)
+			dep.mutex.Unlock()
+			deps = append(deps, dep)
 		}
 		wg := sync.WaitGroup{}
 		for _, dep := range deps {
+			if this.isRequiredBy(dep) {
+				// circular reference
+				continue
+			}
 			wg.Add(1)
 			go func(dep *Package) {
-				dep.Refresh()
 				defer wg.Done()
+				dep.Refresh()
 			}(dep)
 		}
 		wg.Wait()
@@ -148,6 +160,7 @@ func (this *Package) addDep(name string, r *semver.Constraints) *Package {
 		Name:    name,
 		Version: getMinVersion(name, r),
 		Parent:  this,
+		mutex:   &sync.Mutex{},
 	})
 	pkg := i.(*Package)
 	if r.Check(pkg.Version) {
@@ -230,4 +243,16 @@ func getMinVersion(name string, r *semver.Constraints) *semver.Version {
 	}
 
 	return parsedVersions[0]
+}
+
+func (this *Package) isRequiredBy(other *Package) bool {
+	if this == other {
+		return true
+	}
+	for _, p := range this.requiredBy {
+		if p.isRequiredBy(other) {
+			return true
+		}
+	}
+	return false
 }
