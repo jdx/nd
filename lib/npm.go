@@ -168,7 +168,7 @@ func (this *Package) Refresh() {
 	cache = sync.Map{}
 	this.init()
 	this.refresh(true)
-	this.Debug()
+	fmt.Println(this.Debug())
 	this.validate()
 }
 
@@ -615,10 +615,9 @@ func (this *Package) GetDependency(name string) *Package {
 	return nil
 }
 
-func (this *Package) Debug() {
+func (this *Package) Debug() string {
 	if this.Parent != nil {
-		this.Parent.Debug()
-		return
+		return this.Parent.Debug()
 	}
 	var render func(dep *Package) gotree.Tree
 	render = func(dep *Package) gotree.Tree {
@@ -628,5 +627,5 @@ func (this *Package) Debug() {
 		}
 		return tree
 	}
-	fmt.Println(render(this).Print())
+	return render(this).Print()
 }

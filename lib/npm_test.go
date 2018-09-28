@@ -57,13 +57,22 @@ func Test3Lock(t *testing.T) {
 	os.RemoveAll(tmpDir)
 	os.RemoveAll(path.Join(root, "node_modules"))
 	test := func() {
-		Load(root)
+		pkg := Load(root)
 		checkVersion(t, path.Join(root, "node_modules/nd-a"), "1.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a"), "0.0.1")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b"), "0.0.1")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-c"), "1.0.3")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a/node_modules/edon-test-c"), "0.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b/node_modules/edon-test-c"), "0.0.0")
+		assert.Equal(t,
+			`example@0.0.0
+├── edon-test-a@0.0.1
+│   └── edon-test-c@0.0.0
+├── edon-test-b@0.0.1
+│   └── edon-test-c@0.0.0
+├── edon-test-c@1.0.3
+└── nd-a@1.0.0
+`, pkg.Debug())
 		os.RemoveAll(path.Join(root, "node_modules"))
 	}
 	test()
