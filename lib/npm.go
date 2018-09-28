@@ -232,9 +232,10 @@ func (this *Package) init() {
 		}
 		root := path.Join(modules, d)
 		i, loaded := this.Dependencies.LoadOrStore(d, &Package{
-			Name:  d,
-			Root:  root,
-			PJSON: MustParsePackage(root),
+			Name:   d,
+			Root:   root,
+			PJSON:  MustParsePackage(root),
+			Parent: this,
 		})
 		if loaded {
 			panic("already loaded: " + d)
@@ -310,9 +311,6 @@ func (this *Package) addDep(name string, r *semver.Range) *Package {
 		mutex:   &sync.Mutex{},
 	})
 	pkg := i.(*Package)
-	if name == "stdout-stderr" {
-		log.Errorf("%s %s %s", name, pkg.Version.String(), r.String())
-	}
 	if r.Valid(pkg.Version) {
 		return pkg
 	}
