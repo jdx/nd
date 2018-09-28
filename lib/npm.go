@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/apex/log"
+	"github.com/disiqueira/gotree"
 	"github.com/jdxcode/clonedir"
 	semver "github.com/jdxcode/go-semver"
 	homedir "github.com/mitchellh/go-homedir"
@@ -25,13 +26,7 @@ import (
 func Load(root string) *Package {
 	root, err := filepath.Abs(root)
 	must(err)
-	pjson, err := ParsePackage(root)
-	must(err)
-	var version *semver.Version
-	if pjson.Version != "" {
-		version = semver.MustParse(pjson.Version)
-	}
-	pkg := Package{Name: pjson.Name, Root: root, PJSON: pjson, Version: version}
+	pkg := Package{Root: root}
 	lock, err := ParsePackageLock(root)
 	if lock != nil {
 		pkg.PackageLock = lock
@@ -116,6 +111,11 @@ func fetch(key string, fn func() interface{}) interface{} {
 	return entry.val
 }
 
+func MustParsePackage(root string) *PJSON {
+	pkg, err := ParsePackage(root)
+	must(err)
+	return pkg
+}
 func ParsePackage(root string) (*PJSON, error) {
 	// return fetch("ParsePackage:"+root, func() interface{} {
 	p := path.Join(root, "package.json")
@@ -168,6 +168,7 @@ func (this *Package) Refresh() {
 	cache = sync.Map{}
 	this.init()
 	this.refresh(true)
+	this.Debug()
 	this.validate()
 }
 
@@ -175,6 +176,9 @@ func (this *Package) validate() {
 	for key, requestedVersion := range this.PJSON.Dependencies {
 		r := semver.MustParseRange(requestedVersion)
 		dep := this.require(key)
+		if dep == nil {
+			panic("Could not find " + key + "@" + r.String() + " in " + this.Root)
+		}
 		r.Valid(dep.Version)
 	}
 	this.Dependencies.Range(func(key interface{}, d interface{}) bool {
@@ -185,6 +189,15 @@ func (this *Package) validate() {
 }
 
 func (this *Package) init() {
+	if this.PJSON == nil {
+		this.PJSON = MustParsePackage(this.Root)
+	}
+	this.Name = this.PJSON.Name
+	if this.PJSON.Version != "" {
+		this.Version = semver.MustParse(this.PJSON.Version)
+	}
+	this.Dependencies = &sync.Map{}
+	this.mutex = &sync.Mutex{}
 	log.Debugf("%s", this.Root)
 	readdir := func(dir string) []os.FileInfo {
 		files, err := ioutil.ReadDir(path.Join(this.Root, "node_modules"))
@@ -217,6 +230,16 @@ func (this *Package) init() {
 		if !fileExists(path.Join(modules, d, "package.json")) {
 			continue
 		}
+		root := path.Join(modules, d)
+		i, loaded := this.Dependencies.LoadOrStore(d, &Package{
+			Name:  d,
+			Root:  root,
+			PJSON: MustParsePackage(root),
+		})
+		if loaded {
+			panic("already loaded: " + d)
+		}
+		i.(*Package).init()
 	}
 }
 
@@ -226,7 +249,9 @@ func (this *Package) refresh(dev bool) {
 			deps := this.Parent.PackageLock.Dependencies
 			this.PackageLock = deps[this.Name]
 		}
-		this.Dependencies = &sync.Map{}
+		if this.Dependencies == nil {
+			this.Dependencies = &sync.Map{}
+		}
 		if this.PJSON == nil {
 			pjson, err := ParsePackage(this.Root)
 			if os.IsNotExist(err) || !semver.MustParse(pjson.Version).EQ(this.Version) {
@@ -285,6 +310,9 @@ func (this *Package) addDep(name string, r *semver.Range) *Package {
 		mutex:   &sync.Mutex{},
 	})
 	pkg := i.(*Package)
+	if name == "stdout-stderr" {
+		log.Errorf("%s %s %s", name, pkg.Version.String(), r.String())
+	}
 	if r.Valid(pkg.Version) {
 		return pkg
 	}
@@ -559,4 +587,46 @@ func (this *Package) require(name string) *Package {
 		return this.Parent.require(name)
 	}
 	return nil
+}
+
+func (this *Package) String() string {
+	return fmt.Sprintf("%s@%s", this.Name, this.Version)
+}
+
+func (this *Package) DependencyNames() []string {
+	names := []string{}
+	if this.Dependencies != nil {
+		this.Dependencies.Range(func(k, _ interface{}) bool {
+			names = append(names, k.(string))
+			return true
+		})
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (this *Package) GetDependency(name string) *Package {
+	if this.Dependencies == nil {
+		return nil
+	}
+	if i, ok := this.Dependencies.Load(name); ok {
+		return i.(*Package)
+	}
+	return nil
+}
+
+func (this *Package) Debug() {
+	if this.Parent != nil {
+		this.Parent.Debug()
+		return
+	}
+	var render func(dep *Package) gotree.Tree
+	render = func(dep *Package) gotree.Tree {
+		tree := gotree.New(dep.String())
+		for _, name := range dep.DependencyNames() {
+			tree.AddTree(render(dep.GetDependency(name)))
+		}
+		return tree
+	}
+	fmt.Println(render(this).Print())
 }

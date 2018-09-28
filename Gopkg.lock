@@ -18,6 +18,14 @@
   version = "v1.1.1"
 
 [[projects]]
+  digest = "1:e4216b03002c7f06ded60fe77ca7765eef22558b5f5fee4cd6100c223a3f858c"
+  name = "github.com/disiqueira/gotree"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "53a8e837f2952215f256fc9acf4ecb2045b056fb"
+  version = "2.0.3"
+
+[[projects]]
   digest = "1:870d441fe217b8e689d7949fef6e43efbc787e50f200cb1e70dbca9204a1d6be"
   name = "github.com/inconshreveable/mousetrap"
   packages = ["."]
@@ -94,6 +102,7 @@
   analyzer-version = 1
   input-imports = [
     "github.com/apex/log",
+    "github.com/disiqueira/gotree",
     "github.com/jdxcode/clonedir",
     "github.com/jdxcode/go-semver",
     "github.com/mitchellh/go-homedir",
