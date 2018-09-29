@@ -9,23 +9,26 @@ import (
 
 	"github.com/apex/log"
 	"github.com/disiqueira/gotree"
+	"github.com/jdxcode/clonedir"
 	semver "github.com/jdxcode/go-semver"
 )
 
 type Project struct {
 	*Dependency
+
 	Root        string
 	YarnLock    interface{}
 	PackageLock interface{}
 }
 
 type Dependency struct {
+	*sync.Mutex
+
 	Name         string
 	Version      *semver.Version
 	Range        *semver.Range
 	Dependencies Dependencies
 
-	lock  *sync.Mutex
 	dist  *ManifestDist
 	pjson *PJSON
 }
@@ -46,17 +49,7 @@ func LoadProject(root string) *Project {
 	fmt.Println(p.Debug())
 	p.dedupe(nil)
 	fmt.Println(p.Debug())
-	// resolving is done so build the tree
-	// tree = buildIdealTree()
-	// once caching is complete:
-	//   install(tree)
-	// go init()
-	// for {
-	// 	select {
-	// 	case job, open := <-p.resolveJobs:
-	// 	case job, open := <-p.cacheJobs:
-	// 	}
-	// }
+	p.install(p.Root)
 	return p
 }
 
@@ -65,6 +58,7 @@ func (p *Project) resolve() {
 	pjson := MustParsePackage(p.Root)
 	version, _ := semver.Parse(pjson.Version)
 	p.Dependency = &Dependency{
+		Mutex:   &sync.Mutex{},
 		pjson:   pjson,
 		Name:    pjson.Name,
 		Version: version,
@@ -86,9 +80,22 @@ func (p *Project) resolve() {
 	log.Infof("found all deps")
 }
 
+func (d *Dependency) install(root string) {
+	d.Lock()
+	defer d.Unlock()
+	for _, subdep := range d.Dependencies {
+		subdep.install(path.Join(root, "node_modules", subdep.Name))
+	}
+	if fileExists(path.Join(root, "package.json")) {
+		return
+	}
+	log.Infof("installing %s", d.Name)
+	clonedir.Clone(d.cacheLocation(), root)
+}
+
 func (d *Dependency) findDependents(ancestors Dependencies) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
+	d.Lock()
+	defer d.Unlock()
 	d.Version = getMinVersion(d.Name, d.Range)
 	ancestors = append(ancestors, d)
 	manifest := FetchManifest(d.Name)
@@ -113,7 +120,6 @@ func (d *Dependency) findDependents(ancestors Dependencies) {
 
 func (d *Dependency) hasValidAncestor(ancestors Dependencies) bool {
 	for _, ancestor := range ancestors {
-		log.Errorf("%s %s %s", d.Name, d.Range.String(), ancestor.Version.String(), d.Range.Valid(ancestor.Version))
 		if ancestor.Name == d.Name && d.Range.Valid(ancestor.Version) {
 			return true
 		}
@@ -122,13 +128,16 @@ func (d *Dependency) hasValidAncestor(ancestors Dependencies) bool {
 }
 
 func (d *Dependency) cache() {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	cacheLocation := path.Join(tmpDir, "packages", d.Name, d.Version.String())
-	if !fileExists(cacheLocation) {
-		extractTarFromUrl(d.dist.Tarball, cacheLocation)
-		setIntegrity(cacheLocation, d.dist.Integrity)
+	d.Lock()
+	defer d.Unlock()
+	if !fileExists(d.cacheLocation()) {
+		extractTarFromUrl(d.dist.Tarball, d.cacheLocation())
+		setIntegrity(d.cacheLocation(), d.dist.Integrity)
 	}
+}
+
+func (d *Dependency) cacheLocation() string {
+	return path.Join(tmpDir, "packages", d.Name, d.Version.String())
 }
 
 func buildDepsArr(deps map[string]string) Dependencies {
@@ -137,7 +146,7 @@ func buildDepsArr(deps map[string]string) Dependencies {
 		arr = append(arr, &Dependency{
 			Name:  name,
 			Range: semver.MustParseRange(v),
-			lock:  &sync.Mutex{},
+			Mutex: &sync.Mutex{},
 		})
 	}
 	return arr
