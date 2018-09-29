@@ -80,9 +80,9 @@ func (d *Dependency) hasValidAncestor(ancestors Dependencies) bool {
 func (d *Dependency) cache() {
 	d.cacheWG.Add(1)
 	defer d.cacheWG.Done()
-	d.Lock()
-	defer d.Unlock()
 	fetch("cache_dep:"+d.cacheLocation(), func() interface{} {
+		d.Lock()
+		defer d.Unlock()
 		if !fileExists(path.Join(d.cacheLocation(), "package.json")) {
 			extractTarFromUrl(d.dist.Tarball, d.cacheLocation())
 			setIntegrity(d.cacheLocation(), d.dist.Integrity)
