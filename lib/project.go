@@ -242,7 +242,7 @@ func (d *Dependency) Lock() {
 	d.Mutex.Lock()
 	var err error
 	if d.lockfile == "" {
-		f := path.Join(d.cacheLocation(), "lock")
+		f := d.cacheLocation() + ".lock"
 		os.MkdirAll(path.Dir(f), 0755)
 		d.lockfile, err = lockfile.New(f)
 		must(err)
