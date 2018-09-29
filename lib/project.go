@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"github.com/apex/log"
@@ -22,12 +23,11 @@ type Dependency struct {
 	Name         string
 	Version      *semver.Version
 	Range        *semver.Range
-	Dependencies []*Dependency
+	Dependencies Dependencies
 
-	ancestors []*Dependency
-	lock      *sync.Mutex
-	dist      *ManifestDist
-	pjson     *PJSON
+	lock  *sync.Mutex
+	dist  *ManifestDist
+	pjson *PJSON
 }
 
 type Dist struct {
@@ -43,6 +43,8 @@ func LoadProject(root string) *Project {
 	log.Debugf("LoadProject", root)
 	p := &Project{Root: root}
 	p.resolve()
+	fmt.Println(p.Debug())
+	p.dedupe(nil)
 	fmt.Println(p.Debug())
 	// resolving is done so build the tree
 	// tree = buildIdealTree()
@@ -67,15 +69,16 @@ func (p *Project) resolve() {
 		Name:    pjson.Name,
 		Version: version,
 	}
-	p.Dependencies = buildDepsArr([]*Dependency{}, p.pjson.Dependencies)
+	p.Dependencies = buildDepsArr(p.pjson.Dependencies)
 	if p.pjson.DevDependencies != nil {
-		p.Dependencies = append(p.Dependencies, buildDepsArr([]*Dependency{}, *p.pjson.DevDependencies)...)
+		p.Dependencies = append(p.Dependencies, buildDepsArr(*p.pjson.DevDependencies)...)
 	}
 	wg := sync.WaitGroup{}
+	p.Sort()
 	for _, dep := range p.Dependencies {
 		wg.Add(1)
 		go func(dep *Dependency) {
-			dep.findDependents()
+			dep.findDependents(Dependencies{})
 			wg.Done()
 		}(dep)
 	}
@@ -83,30 +86,39 @@ func (p *Project) resolve() {
 	log.Infof("found all deps")
 }
 
-func (d *Dependency) findDependents() {
+func (d *Dependency) findDependents(ancestors Dependencies) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	d.Version = getMinVersion(d.Name, d.Range)
-	for _, ancestor := range d.ancestors {
-		if ancestor.Name == d.Name && ancestor.Version == d.Version {
-			// circular
-			return
-		}
-	}
-	ancestors := append(d.ancestors, d)
+	ancestors = append(ancestors, d)
 	manifest := FetchManifest(d.Name)
 	version := manifest.Versions[d.Version.String()]
 	d.dist = version.Dist
-	d.Dependencies = buildDepsArr(ancestors, version.Dependencies)
+	d.Dependencies = buildDepsArr(version.Dependencies)
 	wg := sync.WaitGroup{}
+	d.Filter(func(dep *Dependency) bool {
+		return !dep.hasValidAncestor(ancestors)
+	})
+	d.Sort()
 	for _, dep := range d.Dependencies {
 		wg.Add(1)
 		go func(dep *Dependency) {
-			dep.findDependents()
+			dep.findDependents(ancestors)
 			wg.Done()
 		}(dep)
 	}
+	go d.cache()
 	wg.Wait()
+}
+
+func (d *Dependency) hasValidAncestor(ancestors Dependencies) bool {
+	for _, ancestor := range ancestors {
+		log.Errorf("%s %s %s", d.Name, d.Range.String(), ancestor.Version.String(), d.Range.Valid(ancestor.Version))
+		if ancestor.Name == d.Name && d.Range.Valid(ancestor.Version) {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *Dependency) cache() {
@@ -119,14 +131,13 @@ func (d *Dependency) cache() {
 	}
 }
 
-func buildDepsArr(ancestors []*Dependency, deps map[string]string) []*Dependency {
-	arr := []*Dependency{}
+func buildDepsArr(deps map[string]string) Dependencies {
+	arr := Dependencies{}
 	for name, v := range deps {
 		arr = append(arr, &Dependency{
-			Name:      name,
-			Range:     semver.MustParseRange(v),
-			ancestors: ancestors,
-			lock:      &sync.Mutex{},
+			Name:  name,
+			Range: semver.MustParseRange(v),
+			lock:  &sync.Mutex{},
 		})
 	}
 	return arr
@@ -180,4 +191,75 @@ func (d *Dependency) Debug() string {
 
 func (d *Dependency) String() string {
 	return fmt.Sprintf("%s@%s", d.Name, d.Version)
+}
+
+func (d *Dependency) dedupe(parent *Dependency) bool {
+	for _, sub := range d.Dependencies {
+		if sub.dedupe(d) {
+			return d.dedupe(parent)
+		}
+	}
+	d.Sort()
+	if parent == nil {
+		return false
+	}
+	toRemove := []string{}
+	for _, sub := range d.Dependencies {
+		name := sub.Name
+		parentSub := parent.Get(name)
+		if parentSub == nil || parentSub.Version == sub.Version {
+			toRemove = append(toRemove, name)
+		}
+		if parentSub == nil {
+			log.Debugf("adding %s", name)
+			parent.Dependencies = append(parent.Dependencies, sub)
+		}
+	}
+	for _, name := range toRemove {
+		log.Debugf("removing %s", name)
+		d.Remove(name)
+	}
+	d.Sort()
+	return len(toRemove) != 0
+}
+
+func (d *Dependency) Sort() {
+	sort.Sort(d.Dependencies)
+}
+
+func (d *Dependency) Get(name string) *Dependency {
+	for _, dep := range d.Dependencies {
+		if dep.Name == name {
+			return dep
+		}
+	}
+	return nil
+}
+
+func (d *Dependency) Remove(name string) {
+	d.Filter(func(dep *Dependency) bool {
+		return dep.Name != name
+	})
+}
+
+func (d *Dependency) Filter(fn func(d *Dependency) bool) {
+	deps := Dependencies{}
+	for _, dep := range d.Dependencies {
+		if fn(dep) {
+			deps = append(deps, dep)
+		}
+	}
+	d.Dependencies = deps
+}
+
+type Dependencies []*Dependency
+
+func (d Dependencies) Len() int {
+	return len(d)
+}
+func (d Dependencies) Swap(i, j int) {
+	d[i], d[j] = d[j], d[i]
+}
+func (d Dependencies) Less(i, j int) bool {
+	return d[i].Name < d[j].Name
 }
