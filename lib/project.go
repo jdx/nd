@@ -247,18 +247,24 @@ func (d *Dependency) Lock() {
 		d.lockfile, err = lockfile.New(f)
 		must(err)
 	}
-	var lock func()
-	lock = func() {
+	var lock func(timeout time.Duration)
+	lock = func(timeout time.Duration) {
 		err = d.lockfile.TryLock()
 		if _, ok := err.(interface{ Temporary() bool }); ok {
-			log.Warnf("lockfile locked %s", d.lockfile)
-			time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
-			lock()
+			if timeout < 0 {
+				panic("still locked")
+			}
+			if timeout == 30*time.Second {
+				log.Warnf("lockfile locked %s", d.lockfile)
+			}
+			t := time.Duration(rand.Intn(1000)) * time.Millisecond
+			time.Sleep(t)
+			lock(timeout - t)
 		} else {
 			must(err)
 		}
 	}
-	lock()
+	lock(30 * time.Second)
 }
 
 func (d *Dependency) Unlock() {
