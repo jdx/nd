@@ -16,7 +16,7 @@ func checkVersion(t *testing.T, p, version string) {
 	assert.Equal(t, version, pkg.Version)
 }
 
-func Test1Example(t *testing.T) {
+func test1Example(t *testing.T) {
 	os.RemoveAll(tmpDir)
 	root := path.Join(fixtures, "1-example")
 	os.RemoveAll(path.Join(root, "node_modules"))
@@ -45,7 +45,7 @@ func Test1Example(t *testing.T) {
 	os.RemoveAll(path.Join(root, "node_modules"))
 }
 
-func Test2Circ(t *testing.T) {
+func test2Circ(t *testing.T) {
 	root := path.Join(fixtures, "2-circ")
 	os.RemoveAll(tmpDir)
 	os.RemoveAll(path.Join(root, "node_modules"))
@@ -66,7 +66,7 @@ func Test2Circ(t *testing.T) {
 	os.RemoveAll(path.Join(root, "node_modules"))
 }
 
-func Test3Lock(t *testing.T) {
+func test3Lock(t *testing.T) {
 	root := path.Join(fixtures, "3-package-lock")
 	os.RemoveAll(tmpDir)
 	os.RemoveAll(path.Join(root, "node_modules"))

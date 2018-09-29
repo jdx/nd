@@ -80,7 +80,8 @@ type PackageLock struct {
 type Manifest struct {
 	Name     string `json:"name"`
 	Versions map[string]struct {
-		Dist *ManifestDist `json:"dist"`
+		Dependencies map[string]string `json:"dependencies"`
+		Dist         *ManifestDist     `json:"dist"`
 	} `json:"versions"`
 }
 
