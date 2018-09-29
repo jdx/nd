@@ -1,31 +1,33 @@
 package lib
 
 import (
+	"fmt"
 	"path"
 	"path/filepath"
 	"sync"
 
 	"github.com/apex/log"
+	"github.com/disiqueira/gotree"
 	semver "github.com/jdxcode/go-semver"
 )
 
 type Project struct {
-	Root         string
-	YarnLock     interface{}
-	PackageLock  interface{}
-	Dependencies []*Dependency
-
-	resolveJobs chan *Dependency
-	cacheJobs   chan *Dist
+	*Dependency
+	Root        string
+	YarnLock    interface{}
+	PackageLock interface{}
 }
 
 type Dependency struct {
-	Name      string
-	Version   *semver.Version
-	Range     *semver.Range
-	Ancestors []*Dependency
+	Name         string
+	Version      *semver.Version
+	Range        *semver.Range
+	Dependencies []*Dependency
+
+	ancestors []*Dependency
 	lock      *sync.Mutex
 	dist      *ManifestDist
+	pjson     *PJSON
 }
 
 type Dist struct {
@@ -40,7 +42,8 @@ func LoadProject(root string) *Project {
 	must(err)
 	log.Debugf("LoadProject", root)
 	p := &Project{Root: root}
-	p.findDependents()
+	p.resolve()
+	fmt.Println(p.Debug())
 	// resolving is done so build the tree
 	// tree = buildIdealTree()
 	// once caching is complete:
@@ -55,52 +58,51 @@ func LoadProject(root string) *Project {
 	return p
 }
 
-func (p *Project) findDependents() {
+func (p *Project) resolve() {
 	log.Infof("finding all deps")
-	c := make(chan *Dependency)
 	pjson := MustParsePackage(p.Root)
-	deps := buildDepsArr([]*Dependency{}, pjson.Dependencies)
-	if pjson.DevDependencies != nil {
-		deps = append(deps, buildDepsArr([]*Dependency{}, *pjson.DevDependencies)...)
+	version, _ := semver.Parse(pjson.Version)
+	p.Dependency = &Dependency{
+		pjson:   pjson,
+		Name:    pjson.Name,
+		Version: version,
+	}
+	p.Dependencies = buildDepsArr([]*Dependency{}, p.pjson.Dependencies)
+	if p.pjson.DevDependencies != nil {
+		p.Dependencies = append(p.Dependencies, buildDepsArr([]*Dependency{}, *p.pjson.DevDependencies)...)
 	}
 	wg := sync.WaitGroup{}
-	for _, dep := range deps {
+	for _, dep := range p.Dependencies {
 		wg.Add(1)
 		go func(dep *Dependency) {
-			dep.findDependents(c)
+			dep.findDependents()
 			wg.Done()
 		}(dep)
 	}
-	go func() {
-		for {
-			dep := <-c
-			p.Dependencies = append(p.Dependencies, dep)
-		}
-	}()
 	wg.Wait()
 	log.Infof("found all deps")
 }
 
-func (d *Dependency) findDependents(c chan *Dependency) {
+func (d *Dependency) findDependents() {
+	d.lock.Lock()
+	defer d.lock.Unlock()
 	d.Version = getMinVersion(d.Name, d.Range)
-	for _, ancestor := range d.Ancestors {
+	for _, ancestor := range d.ancestors {
 		if ancestor.Name == d.Name && ancestor.Version == d.Version {
 			// circular
 			return
 		}
 	}
-	c <- d
-	ancestors := append(d.Ancestors, d)
+	ancestors := append(d.ancestors, d)
 	manifest := FetchManifest(d.Name)
 	version := manifest.Versions[d.Version.String()]
 	d.dist = version.Dist
-	deps := buildDepsArr(ancestors, version.Dependencies)
+	d.Dependencies = buildDepsArr(ancestors, version.Dependencies)
 	wg := sync.WaitGroup{}
-	for _, dep := range deps {
+	for _, dep := range d.Dependencies {
 		wg.Add(1)
 		go func(dep *Dependency) {
-			dep.findDependents(c)
-			go dep.cache()
+			dep.findDependents()
 			wg.Done()
 		}(dep)
 	}
@@ -123,7 +125,7 @@ func buildDepsArr(ancestors []*Dependency, deps map[string]string) []*Dependency
 		arr = append(arr, &Dependency{
 			Name:      name,
 			Range:     semver.MustParseRange(v),
-			Ancestors: ancestors,
+			ancestors: ancestors,
 			lock:      &sync.Mutex{},
 		})
 	}
@@ -162,4 +164,20 @@ func install() {
 	//   wait for install to complete
 	// install(node.cacheDir, node.toDir)
 	// wg.Done()
+}
+
+func (d *Dependency) Debug() string {
+	var render func(d *Dependency) gotree.Tree
+	render = func(d *Dependency) gotree.Tree {
+		tree := gotree.New(d.String())
+		for _, d := range d.Dependencies {
+			tree.AddTree(render(d))
+		}
+		return tree
+	}
+	return render(d).Print()
+}
+
+func (d *Dependency) String() string {
+	return fmt.Sprintf("%s@%s", d.Name, d.Version)
 }
