@@ -1,8 +1,9 @@
 language: go
 
 env:
-  - ND_LOG: debug
-  - CLONEDIR_DEBUG: 1
+  global:
+    - ND_LOG=debug
+    - CLONEDIR_DEBUG=1
 
 script:
   - ./test
