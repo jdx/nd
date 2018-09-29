@@ -58,6 +58,14 @@
   version = "v1.0.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:6491080aa184f88c2bb8e2f6056e5e0e9a578b2d8666efbd6e97bc37a0c41e72"
+  name = "github.com/nightlyone/lockfile"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "0ad87eef1443f64d3d8c50da647e2b1552851124"
+
+[[projects]]
   digest = "1:40e195917a951a8bf867cd05de2a46aaf1806c50cf92eebf4c16f78cd196f747"
   name = "github.com/pkg/errors"
   packages = ["."]
@@ -106,6 +114,7 @@
     "github.com/jdxcode/clonedir",
     "github.com/jdxcode/go-semver",
     "github.com/mitchellh/go-homedir",
+    "github.com/nightlyone/lockfile",
     "github.com/spf13/cobra",
     "github.com/stretchr/testify/assert",
   ]
