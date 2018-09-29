@@ -14,6 +14,6 @@ var refreshCmd = &cobra.Command{
 	Short: "ensures all node modules are installed",
 	Long:  "equivalent to `node SCRIPT`",
 	Run: func(cmd *cobra.Command, args []string) {
-		nd.Load("")
+		nd.LoadProject("")
 	},
 }

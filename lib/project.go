@@ -2,15 +2,18 @@ package lib
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/apex/log"
 	"github.com/disiqueira/gotree"
 	"github.com/jdxcode/clonedir"
 	semver "github.com/jdxcode/go-semver"
+	"github.com/nightlyone/lockfile"
 )
 
 type Project struct {
@@ -29,8 +32,9 @@ type Dependency struct {
 	Range        *semver.Range
 	Dependencies Dependencies
 
-	dist  *ManifestDist
-	pjson *PJSON
+	dist     *ManifestDist
+	pjson    *PJSON
+	lockfile lockfile.Lockfile
 }
 
 type Dist struct {
@@ -43,7 +47,7 @@ type Dist struct {
 func LoadProject(root string) *Project {
 	root, err := filepath.Abs(root)
 	must(err)
-	log.Debugf("LoadProject", root)
+	log.Debugf("load: %s", root)
 	p := &Project{Root: root}
 	p.resolve()
 	fmt.Println(p.Debug())
@@ -94,8 +98,8 @@ func (d *Dependency) install(root string) {
 }
 
 func (d *Dependency) findDependents(ancestors Dependencies) {
-	d.Lock()
-	defer d.Unlock()
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
 	d.Version = getMinVersion(d.Name, d.Range)
 	ancestors = append(ancestors, d)
 	manifest := FetchManifest(d.Name)
@@ -130,7 +134,7 @@ func (d *Dependency) hasValidAncestor(ancestors Dependencies) bool {
 func (d *Dependency) cache() {
 	d.Lock()
 	defer d.Unlock()
-	if !fileExists(d.cacheLocation()) {
+	if !fileExists(path.Join(d.cacheLocation(), "package.json")) {
 		extractTarFromUrl(d.dist.Tarball, d.cacheLocation())
 		setIntegrity(d.cacheLocation(), d.dist.Integrity)
 	}
@@ -150,40 +154,6 @@ func buildDepsArr(deps map[string]string) Dependencies {
 		})
 	}
 	return arr
-}
-
-func buildTree() {
-	// input node
-	// for every dep in graph:
-	//   if parent has dep, continue
-	//   add to tree
-	//   add all descendents as well if possible
-	// for every dep in tree:
-	//   buildTree(dep)
-}
-
-func rsolve() {
-	// use wait group
-	// input: name, semver range, ancestors
-	// grab manifest
-	// find appropriate version
-	// send cache job: cache(url) // probably buffer these
-	// if deps of this not in project:
-	//   wg.Add(1)
-	//   go resolve(name, semverRange, ancestors+1)
-	// wg.Done()
-}
-
-func install() {
-	// use wait group
-	// input: tree
-	// for node in tree:
-	//   wg.Add(1)
-	//   go install(node)
-	// for node in graph:
-	//   wait for install to complete
-	// install(node.cacheDir, node.toDir)
-	// wg.Done()
 }
 
 func (d *Dependency) Debug() string {
@@ -259,6 +229,36 @@ func (d *Dependency) Filter(fn func(d *Dependency) bool) {
 		}
 	}
 	d.Dependencies = deps
+}
+
+func (d *Dependency) Lock() {
+	d.Mutex.Lock()
+	var err error
+	if d.lockfile == "" {
+		f := path.Join(d.cacheLocation(), "lock")
+		os.MkdirAll(path.Dir(f), 0755)
+		d.lockfile, err = lockfile.New(f)
+		must(err)
+	}
+	var lock func()
+	lock = func() {
+		err = d.lockfile.TryLock()
+		if _, ok := err.(interface{ Temporary() bool }); ok {
+			log.Warnf("lockfile locked %s", d.lockfile)
+			time.Sleep(time.Second * 5)
+			lock()
+		} else {
+			must(err)
+		}
+	}
+	lock()
+}
+
+func (d *Dependency) Unlock() {
+	if err := d.lockfile.Unlock(); err != nil {
+		log.Warnf("lockfile error: %s", err.Error())
+	}
+	d.Mutex.Unlock()
 }
 
 type Dependencies []*Dependency

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestProject(t *testing.T) {
+func testProject(t *testing.T) {
 	LoadProject("../fixtures/1-example")
 	os.RemoveAll("../fixtures/1-example/node_modules")
 	LoadProject("../fixtures/2-circ")

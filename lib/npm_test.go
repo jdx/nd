@@ -16,12 +16,12 @@ func checkVersion(t *testing.T, p, version string) {
 	assert.Equal(t, version, pkg.Version)
 }
 
-func test1Example(t *testing.T) {
+func Test1Example(t *testing.T) {
 	os.RemoveAll(tmpDir)
 	root := path.Join(fixtures, "1-example")
 	os.RemoveAll(path.Join(root, "node_modules"))
 	test := func() {
-		pkg := Load(root)
+		pkg := LoadProject(root)
 		checkVersion(t, path.Join(root, "node_modules/nd-a"), "1.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a"), "1.0.1")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b"), "1.2.1")
@@ -45,16 +45,16 @@ func test1Example(t *testing.T) {
 	os.RemoveAll(path.Join(root, "node_modules"))
 }
 
-func test2Circ(t *testing.T) {
+func Test2Circ(t *testing.T) {
 	root := path.Join(fixtures, "2-circ")
 	os.RemoveAll(tmpDir)
 	os.RemoveAll(path.Join(root, "node_modules"))
 	test := func() {
-		pkg := Load(root)
+		pkg := LoadProject(root)
 		checkVersion(t, path.Join(root, "node_modules/nd-circ-a"), "1.0.0")
 		checkVersion(t, path.Join(root, "node_modules/nd-circ-b"), "1.0.0")
 		assert.Equal(t,
-			`@<nil>
+			`@*
 ├── nd-circ-a@1.0.0
 └── nd-circ-b@1.0.0
 `, pkg.Debug())
@@ -66,12 +66,12 @@ func test2Circ(t *testing.T) {
 	os.RemoveAll(path.Join(root, "node_modules"))
 }
 
-func test3Lock(t *testing.T) {
+func Test3Lock(t *testing.T) {
 	root := path.Join(fixtures, "3-package-lock")
 	os.RemoveAll(tmpDir)
 	os.RemoveAll(path.Join(root, "node_modules"))
 	test := func() {
-		pkg := Load(root)
+		pkg := LoadProject(root)
 		checkVersion(t, path.Join(root, "node_modules/nd-a"), "1.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a"), "0.0.1")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b"), "0.0.1")

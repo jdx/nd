@@ -15,7 +15,7 @@ func main() {
 		cmd.Execute()
 		return
 	}
-	nd.Load("")
+	nd.LoadProject("")
 	proc := exec.Command("node", args...)
 	proc.Stdin = os.Stdin
 	proc.Stdout = os.Stdout
