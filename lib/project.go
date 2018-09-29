@@ -47,6 +47,7 @@ type Dist struct {
 }
 
 func LoadProject(root string) *Project {
+	cache = sync.Map{}
 	root, err := filepath.Abs(root)
 	must(err)
 	log.Debugf("load: %s", root)
@@ -140,10 +141,13 @@ func (d *Dependency) cache() {
 	defer d.cacheWG.Done()
 	d.Lock()
 	defer d.Unlock()
-	if !fileExists(path.Join(d.cacheLocation(), "package.json")) {
-		extractTarFromUrl(d.dist.Tarball, d.cacheLocation())
-		setIntegrity(d.cacheLocation(), d.dist.Integrity)
-	}
+	fetch("cache_dep:"+d.cacheLocation(), func() interface{} {
+		if !fileExists(path.Join(d.cacheLocation(), "package.json")) {
+			extractTarFromUrl(d.dist.Tarball, d.cacheLocation())
+			setIntegrity(d.cacheLocation(), d.dist.Integrity)
+		}
+		return nil
+	})
 }
 
 func (d *Dependency) cacheLocation() string {
