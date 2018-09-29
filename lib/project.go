@@ -2,6 +2,7 @@ package lib
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
@@ -35,6 +36,7 @@ type Dependency struct {
 	dist     *ManifestDist
 	pjson    *PJSON
 	lockfile lockfile.Lockfile
+	cacheWG  *sync.WaitGroup
 }
 
 type Dist struct {
@@ -54,6 +56,7 @@ func LoadProject(root string) *Project {
 	p.dedupe(nil)
 	fmt.Println(p.Debug())
 	p.install(p.Root)
+	p.Wait()
 	return p
 }
 
@@ -66,6 +69,7 @@ func (p *Project) resolve() {
 		pjson:   pjson,
 		Name:    pjson.Name,
 		Version: version,
+		cacheWG: &sync.WaitGroup{},
 	}
 	p.Dependencies = buildDepsArr(p.pjson.Dependencies)
 	if p.pjson.DevDependencies != nil {
@@ -132,6 +136,8 @@ func (d *Dependency) hasValidAncestor(ancestors Dependencies) bool {
 }
 
 func (d *Dependency) cache() {
+	d.cacheWG.Add(1)
+	defer d.cacheWG.Done()
 	d.Lock()
 	defer d.Unlock()
 	if !fileExists(path.Join(d.cacheLocation(), "package.json")) {
@@ -148,9 +154,10 @@ func buildDepsArr(deps map[string]string) Dependencies {
 	arr := Dependencies{}
 	for name, v := range deps {
 		arr = append(arr, &Dependency{
-			Name:  name,
-			Range: semver.MustParseRange(v),
-			Mutex: &sync.Mutex{},
+			Name:    name,
+			Range:   semver.MustParseRange(v),
+			Mutex:   &sync.Mutex{},
+			cacheWG: &sync.WaitGroup{},
 		})
 	}
 	return arr
@@ -245,7 +252,7 @@ func (d *Dependency) Lock() {
 		err = d.lockfile.TryLock()
 		if _, ok := err.(interface{ Temporary() bool }); ok {
 			log.Warnf("lockfile locked %s", d.lockfile)
-			time.Sleep(time.Second * 5)
+			time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
 			lock()
 		} else {
 			must(err)
@@ -259,6 +266,13 @@ func (d *Dependency) Unlock() {
 		log.Warnf("lockfile error: %s", err.Error())
 	}
 	d.Mutex.Unlock()
+}
+
+func (d *Dependency) Wait() {
+	for _, subdep := range d.Dependencies {
+		subdep.Wait()
+	}
+	d.cacheWG.Wait()
 }
 
 type Dependencies []*Dependency
