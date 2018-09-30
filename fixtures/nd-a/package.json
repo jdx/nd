@@ -1,4 +1,5 @@
 {
   "name": "nd-a",
-  "version": "1.0.0"
+  "bin": "bin/run",
+  "version": "2.0.0"
 }

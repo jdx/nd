@@ -6,6 +6,6 @@
     "edon-test-c": "^1.0.3"
   },
   "devDependencies": {
-    "nd-a": "^1.0.0"
+    "nd-a": "^2.0.0"
   }
 }

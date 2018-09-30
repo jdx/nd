@@ -16,18 +16,25 @@ func checkVersion(t *testing.T, p, version string) {
 	assert.Equal(t, version, pkg.Version)
 }
 
+func checkSymlink(t *testing.T, from, expected string) {
+	actual, err := os.Readlink(from)
+	must(err)
+	assert.Equal(t, expected, actual)
+}
+
 func Test1Example(t *testing.T) {
 	os.RemoveAll(tmpDir)
 	root := path.Join(fixtures, "1-example")
 	os.RemoveAll(path.Join(root, "node_modules"))
 	test := func() {
 		pkg := LoadProject(root)
-		checkVersion(t, path.Join(root, "node_modules/nd-a"), "1.0.0")
+		checkVersion(t, path.Join(root, "node_modules/nd-a"), "2.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a"), "1.0.1")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b"), "1.2.1")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-c"), "1.0.4")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a/node_modules/edon-test-c"), "2.1.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b/node_modules/edon-test-c"), "1.0.0")
+		checkSymlink(t, path.Join(root, "node_modules/.bin/nd-a"), "../nd-a/bin/run")
 		assert.Equal(t,
 			`example@0.0.0
 ├── edon-test-a@1.0.1
@@ -35,7 +42,7 @@ func Test1Example(t *testing.T) {
 ├── edon-test-b@1.2.1
 │   └── edon-test-c@1.0.0
 ├── edon-test-c@1.0.4
-└── nd-a@1.0.0
+└── nd-a@2.0.0
 `, pkg.Debug())
 	}
 	test()

@@ -28,7 +28,7 @@ func LoadProject(root string) *Project {
 	fmt.Println(p.Debug())
 	p.dedupe(nil)
 	fmt.Println(p.Debug())
-	p.install(p.Root)
+	p.install(p.Root, p.Root)
 	p.Wait()
 	return p
 }

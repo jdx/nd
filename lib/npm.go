@@ -20,6 +20,7 @@ type PJSON struct {
 	Version         string             `json:"version"`
 	Dependencies    map[string]string  `json:"dependencies"`
 	DevDependencies *map[string]string `json:"devDependencies"`
+	Bin             interface{}        `json:"bin"`
 }
 
 type PackageLock struct {

@@ -121,15 +121,16 @@ func extractTarFromUrl(url, to string) {
 		fi := hdr.FileInfo()
 		mode := fi.Mode()
 		p = path.Join(to, p)
-		must(os.MkdirAll(path.Dir(p), 0755))
 		if mode.IsDir() {
 			log.Debugf("creating directory %s", p)
-			must(os.MkdirAll(path.Dir(p), 0755))
+			must(os.MkdirAll(p, mode.Perm()))
 		} else if mode.IsRegular() {
+			must(os.MkdirAll(path.Dir(p), 0755))
 			f, err := os.Create(p)
 			must(err)
 			_, err = io.Copy(f, tr)
 			must(err)
+			must(os.Chmod(p, mode.Perm()))
 		}
 	}
 }

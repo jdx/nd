@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ type Dependency struct {
 	Version      *semver.Version
 	Range        *semver.Range
 	Dependencies Dependencies
+	Root         string
 
 	dist     *ManifestDist
 	pjson    *PJSON
@@ -30,11 +32,12 @@ type Dependency struct {
 	cacheWG  *sync.WaitGroup
 }
 
-func (d *Dependency) install(root string) {
+func (d *Dependency) install(packageRoot, root string) {
 	d.Lock()
 	defer d.Unlock()
+	d.Root = root
 	for _, subdep := range d.Dependencies {
-		subdep.install(path.Join(root, "node_modules", subdep.Name))
+		subdep.install(packageRoot, path.Join(root, "node_modules", subdep.Name))
 	}
 	if fileExists(path.Join(root, "package.json")) {
 		return
@@ -43,6 +46,8 @@ func (d *Dependency) install(root string) {
 	defer stopDisk()
 	log.Infof("installing %s", d.Name)
 	clonedir.Clone(d.cacheLocation(), root)
+	d.pjson = MustParsePackage(root)
+	d.installBins(packageRoot)
 }
 
 func (d *Dependency) findDependents(ancestors Dependencies) {
@@ -238,4 +243,18 @@ func (d Dependencies) Swap(i, j int) {
 }
 func (d Dependencies) Less(i, j int) bool {
 	return d[i].Name < d[j].Name
+}
+
+func (d *Dependency) installBins(root string) {
+	binDir := path.Join(root, "node_modules", ".bin")
+	bins := map[string]string{}
+	if bin, ok := d.pjson.Bin.(string); ok {
+		bins[d.pjson.Name] = bin
+	}
+	for name, p := range bins {
+		must(os.MkdirAll(binDir, 0755))
+		from, err := filepath.Rel(binDir, path.Join(d.Root, p))
+		must(err)
+		must(os.Symlink(from, path.Join(binDir, name)))
+	}
 }
