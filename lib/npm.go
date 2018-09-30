@@ -2,6 +2,7 @@ package lib
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -77,7 +78,7 @@ func ParsePackageLock(root string) (*PackageLock, error) {
 	return &pkg, nil
 }
 
-func getMinVersion(name string, r *semver.Range) *semver.Version {
+func getMaxVersion(name string, r *semver.Range) *semver.Version {
 	manifest := FetchManifest(name)
 	parsedVersions := semver.Versions{}
 	for raw := range manifest.Versions {
@@ -89,14 +90,16 @@ func getMinVersion(name string, r *semver.Range) *semver.Version {
 	sort.Sort(parsedVersions)
 
 	if len(parsedVersions) < 1 {
-		panic("no version found for " + name)
+		panic(fmt.Errorf("no version found for %s@%s", name, r))
 	}
 
-	return parsedVersions[0]
+	return parsedVersions[len(parsedVersions)-1]
 }
 
 func FetchManifest(name string) *Manifest {
 	return fetch("manifest:"+name, func() interface{} {
+		startNetworking()
+		defer stopNetworking()
 		var manifest Manifest
 		cacheRoot := path.Join(tmpDir, "manifests", name)
 		etag := func() string {

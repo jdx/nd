@@ -93,6 +93,8 @@ func fileExists(p string) bool {
 }
 
 func extractTarFromUrl(url, to string) {
+	startNetworking()
+	defer stopNetworking()
 	log.Infof("HTTP GET %s", url)
 	rsp, err := http.Get(url)
 	must(err)
@@ -144,4 +146,24 @@ func setIntegrity(root, integrity string) {
 	encoder := json.NewEncoder(f)
 	encoder.SetIndent("", "  ")
 	must(encoder.Encode(&pjson))
+}
+
+var networkPool = make(chan int, 1)
+var diskPool = make(chan int, 1)
+
+func startNetworking() {
+	networkPool <- 0
+}
+func stopNetworking() {
+	<-networkPool
+}
+func startDisk() {
+	diskPool <- 0
+}
+func stopDisk() {
+	<-diskPool
+}
+func setPool(count int) {
+	networkPool = make(chan int, count)
+	diskPool = make(chan int, count)
 }

@@ -18,6 +18,7 @@ type Project struct {
 }
 
 func LoadProject(root string) *Project {
+	setPool(20)
 	cache = sync.Map{}
 	root, err := filepath.Abs(root)
 	must(err)

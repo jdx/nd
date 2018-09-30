@@ -39,6 +39,8 @@ func (d *Dependency) install(root string) {
 	if fileExists(path.Join(root, "package.json")) {
 		return
 	}
+	startDisk()
+	defer stopDisk()
 	log.Infof("installing %s", d.Name)
 	clonedir.Clone(d.cacheLocation(), root)
 }
@@ -46,7 +48,7 @@ func (d *Dependency) install(root string) {
 func (d *Dependency) findDependents(ancestors Dependencies) {
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
-	d.Version = getMinVersion(d.Name, d.Range)
+	d.Version = getMaxVersion(d.Name, d.Range)
 	ancestors = append(ancestors, d)
 	manifest := FetchManifest(d.Name)
 	version := manifest.Versions[d.Version.String()]
