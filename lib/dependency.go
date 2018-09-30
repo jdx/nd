@@ -247,14 +247,18 @@ func (d Dependencies) Less(i, j int) bool {
 
 func (d *Dependency) installBins(root string) {
 	binDir := path.Join(root, "node_modules", ".bin")
-	bins := map[string]string{}
+	bins, _ := d.pjson.Bin.(map[string]interface{})
 	if bin, ok := d.pjson.Bin.(string); ok {
-		bins[d.pjson.Name] = bin
+		bins = map[string]interface{}{d.pjson.Name: bin}
 	}
 	for name, p := range bins {
 		must(os.MkdirAll(binDir, 0755))
-		from, err := filepath.Rel(binDir, path.Join(d.Root, p))
+		from, err := filepath.Rel(binDir, path.Join(d.Root, p.(string)))
 		must(err)
-		must(os.Symlink(from, path.Join(binDir, name)))
+		to := path.Join(binDir, name)
+		os.Remove(to)
+		log.Infof("symlink %s %s", from, to)
+		must(os.Symlink(from, to))
+		must(os.Chmod(to, 0755))
 	}
 }
