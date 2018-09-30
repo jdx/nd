@@ -2,7 +2,6 @@ package lib
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -79,22 +78,16 @@ func ParsePackageLock(root string) (*PackageLock, error) {
 	return &pkg, nil
 }
 
-func getMaxVersion(name string, r *semver.Range) *semver.Version {
-	manifest := FetchManifest(name)
-	parsedVersions := semver.Versions{}
+func (manifest *Manifest) ParsedVersions() semver.Versions {
+	versions := semver.Versions{}
 	for raw := range manifest.Versions {
-		v := semver.MustParse(raw)
-		if r.Valid(v) {
-			parsedVersions = append(parsedVersions, v)
-		}
+		versions = append(versions, semver.MustParse(raw))
 	}
-	sort.Sort(parsedVersions)
+	return versions
+}
 
-	if len(parsedVersions) < 1 {
-		panic(fmt.Errorf("no version found for %s@%s", name, r))
-	}
-
-	return parsedVersions[len(parsedVersions)-1]
+func (manifest *Manifest) MaxSatisfying(r *semver.Range) *semver.Version {
+	return r.MaxSatisfying(manifest.ParsedVersions())
 }
 
 func FetchManifest(name string) *Manifest {

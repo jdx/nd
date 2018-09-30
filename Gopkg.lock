@@ -43,11 +43,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:498b30d4d6c7dcefd3813d323c29d950de139eaf710fb1a1ffcf56825c4e6fa3"
+  digest = "1:69bb14b1802da75fe9249c98fd8b73f5982753307332f19a5eaacf2119928ecf"
   name = "github.com/jdxcode/go-semver"
   packages = ["."]
   pruneopts = "UT"
-  revision = "088d174c2a54cdd51f8457c94a8ca37f3a90c44e"
+  revision = "256f553e380114d443f1f0637e865b0464a817e1"
 
 [[projects]]
   digest = "1:78bbb1ba5b7c3f2ed0ea1eab57bdd3859aec7e177811563edc41198a760b06af"

@@ -53,9 +53,9 @@ func (d *Dependency) install(packageRoot, root string) {
 func (d *Dependency) findDependents(ancestors Dependencies) {
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
-	d.Version = getMaxVersion(d.Name, d.Range)
 	ancestors = append(ancestors, d)
 	manifest := FetchManifest(d.Name)
+	d.Version = manifest.MaxSatisfying(d.Range)
 	version := manifest.Versions[d.Version.String()]
 	d.dist = version.Dist
 	d.Dependencies = buildDepsArr(version.Dependencies)
