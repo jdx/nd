@@ -31,7 +31,8 @@ type PackageLock struct {
 }
 
 type Manifest struct {
-	Name     string `json:"name"`
+	Name     string            `json:"name"`
+	DistTags map[string]string `json:"dist-tags"`
 	Versions map[string]struct {
 		Dependencies map[string]string `json:"dependencies"`
 		Dist         *ManifestDist     `json:"dist"`
@@ -87,6 +88,12 @@ func (manifest *Manifest) ParsedVersions() semver.Versions {
 }
 
 func (manifest *Manifest) MaxSatisfying(r *semver.Range) *semver.Version {
+	latest := manifest.DistTags["latest"]
+	if latest != "" {
+		if v := semver.MustParse(latest); r.Valid(v) {
+			return v
+		}
+	}
 	return r.MaxSatisfying(manifest.ParsedVersions())
 }
 

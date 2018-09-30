@@ -31,7 +31,7 @@ func Test1Example(t *testing.T) {
 		checkVersion(t, path.Join(root, "node_modules/nd-a"), "2.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a"), "1.0.1")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b"), "1.2.1")
-		checkVersion(t, path.Join(root, "node_modules/edon-test-c"), "1.0.4")
+		checkVersion(t, path.Join(root, "node_modules/edon-test-c"), "1.0.3")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a/node_modules/edon-test-c"), "2.1.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b/node_modules/edon-test-c"), "1.0.0")
 		checkSymlink(t, path.Join(root, "node_modules/.bin/nd-a"), "../nd-a/bin/run")
@@ -41,7 +41,7 @@ func Test1Example(t *testing.T) {
 │   └── edon-test-c@2.1.0
 ├── edon-test-b@1.2.1
 │   └── edon-test-c@1.0.0
-├── edon-test-c@1.0.4
+├── edon-test-c@1.0.3
 └── nd-a@2.0.0
 `, pkg.Debug())
 	}
@@ -82,7 +82,7 @@ func Test3Lock(t *testing.T) {
 		checkVersion(t, path.Join(root, "node_modules/nd-a"), "1.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a"), "0.0.1")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b"), "0.0.1")
-		checkVersion(t, path.Join(root, "node_modules/edon-test-c"), "1.0.4")
+		checkVersion(t, path.Join(root, "node_modules/edon-test-c"), "1.0.3")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-a/node_modules/edon-test-c"), "0.0.0")
 		checkVersion(t, path.Join(root, "node_modules/edon-test-b/node_modules/edon-test-c"), "0.0.0")
 		assert.Equal(t,
@@ -91,7 +91,7 @@ func Test3Lock(t *testing.T) {
 │   └── edon-test-c@0.0.0
 ├── edon-test-b@0.0.1
 │   └── edon-test-c@0.0.0
-├── edon-test-c@1.0.4
+├── edon-test-c@1.0.3
 └── nd-a@1.0.0
 `, pkg.Debug())
 	}
